@@ -1,7 +1,14 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
+
+// APK 产物时间戳取本项目配置阶段时刻，保证同一次构建内所有变体命名一致。
+val apkTimestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
 android {
     namespace = "com.example.casdonlink"
@@ -26,6 +33,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    // 统一 APK 产物命名：CasdonLink_<debug|release>_V<版本名>_<时间戳>.apk
+    applicationVariants.all {
+        val buildTypeName = buildType.name
+        val appVersion = versionName
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+                "CasdonLink_${buildTypeName}_V${appVersion}_${apkTimestamp}.apk"
         }
     }
     compileOptions {

@@ -77,9 +77,10 @@ class MainActivity : AppCompatActivity() {
                 activeSession?.close()
                 val session = telnetClient.connect(host)
                 activeSession = session
-                session.write("\r\n") // 唤起设备端 shell 提示符
-                kotlinx.coroutines.delay(250)
-                session.readAvailable()
+                // 设备 telnetd 不主动发送 banner，需发送一次 CRLF 唤起 shell 提示符。
+                // 发送 "\n" 由编码器转换成 CRLF；若写成 "\r\n" 会产生 CR CR LF（多一个回车）。
+                session.write("\n")
+                if (!awaitPrompt(session)) throw IllegalStateException("设备未返回 shell 提示符，请确认设备已启动且 Telnet 服务可用")
                 val info = DeviceRepository(session).readOverview()
                 deviceStore.save(DeviceRecord(host))
                 findViewById<TextView>(R.id.deviceTitle).text = host
@@ -96,6 +97,24 @@ class MainActivity : AppCompatActivity() {
                 button.text = "连接设备"
             }
         }
+    }
+
+    /** 轮询等待设备输出提示符：收到数据后再等待短暂静默，避免设备尚未就绪就发送命令。 */
+    private suspend fun awaitPrompt(session: TelnetClient.Session, timeoutMs: Long = 8_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var received = false
+        var idle = 0
+        while (System.currentTimeMillis() < deadline) {
+            val chunk = session.readAvailable()
+            if (chunk.isNotEmpty()) {
+                received = true
+                idle = 0
+            } else if (received) {
+                if (++idle >= 3) return true
+            }
+            kotlinx.coroutines.delay(100)
+        }
+        return received
     }
 
     private fun isValidHost(host: String): Boolean = host.isNotBlank() && host.length <= 253 &&
