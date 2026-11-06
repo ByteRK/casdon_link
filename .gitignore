@@ -1,3 +1,23 @@
-build/bin
-node_modules
-frontend/dist
+# Gradle and Android build output
+.gradle/
+**/build/
+
+# Android Studio machine-specific state
+.idea/
+local.properties
+*.iml
+
+# Kotlin and native build output
+.kotlin/
+.cxx/
+.externalNativeBuild/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Web tooling, if added to the project later
+node_modules/
+frontend/dist/
