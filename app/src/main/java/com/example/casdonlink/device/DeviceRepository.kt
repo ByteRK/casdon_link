@@ -3,38 +3,19 @@ package com.example.casdonlink.device
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 class DeviceRepository(private val session: TelnetClient.Session) {
     suspend fun readOverview(): DeviceInfo = withContext(Dispatchers.IO) {
-        // 独占读取：避免设备页的连接监控协程同时读取而抢走状态数据。
-        session.beginExclusive()
-        try {
-            val marker = "__CL_${UUID.randomUUID().toString().replace("-", "")}__"
-            // 所有片段必须串在同一条命令行里，且结束标记必须在命令执行后立即输出；
-            // 引号必须成对闭合，否则 shell 会停在 PS2 续行提示符上等待输入，标记永远不会出现。
-            session.write(
-                "printf '\\n'; uname -srmo 2>/dev/null; printf '\\nUPTIME '; cat /proc/uptime 2>/dev/null; " +
-                    "printf '\\nMEMORY\\n'; head -n 3 /proc/meminfo 2>/dev/null; printf '\\n$marker\\n'\n"
-            )
-            val output = StringBuilder()
-            val startedAt = System.currentTimeMillis()
-            // 设备为 BusyBox + 低性能 ARM，首次命令可能需数秒，超时不宜过短。
-            repeat(150) {
-                delay(100)
-                output.append(session.readTextAvailable())
-                if (output.toString().contains(marker)) {
-                    Diagnostics.log("状态查询完成，耗时 ${System.currentTimeMillis() - startedAt}ms")
-                    return@withContext parseOverview(output.toString().substringBefore(marker))
-                }
-            }
-            Diagnostics.log("状态查询超时，15 秒内共收到 ${output.length} 字符")
-            throw IllegalStateException("设备未返回状态信息")
-        } finally {
-            session.endExclusive()
-        }
+        // 复用会话的受控命令通道：结束标记由 execute 追加，读取由后台收集协程统一负责。
+        val startedAt = System.currentTimeMillis()
+        val raw = session.execute(
+            "printf '\\n'; uname -srmo 2>/dev/null; printf '\\nUPTIME '; cat /proc/uptime 2>/dev/null; " +
+                "printf '\\nMEMORY\\n'; head -n 3 /proc/meminfo 2>/dev/null",
+            timeoutMs = 15_000
+        )
+        Diagnostics.log("状态查询完成，耗时 ${System.currentTimeMillis() - startedAt}ms")
+        parseOverview(raw)
     }
 
     private fun parseOverview(raw: String): DeviceInfo {

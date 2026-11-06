@@ -11,11 +11,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class TerminalActivity : AppCompatActivity() {
     private var session: TelnetClient.Session? = null
-    private var readerStarted = false
+    private var subscription: AutoCloseable? = null
+    private var monitorJob: Job? = null
     private lateinit var output: TextView
     private lateinit var input: EditText
 
@@ -40,26 +42,42 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
+    /** 订阅会话的后台字节流；离开页面时解除订阅，输出会继续进入回放缓冲。 */
     private fun startReader() {
-        if (readerStarted || session == null || session?.isReading() == true) return
-        readerStarted = true
-        lifecycleScope.launch {
-            try {
-                session?.readLoop { text -> runOnUiThread { appendOutput(text) } }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                runOnUiThread {
-                    findViewById<TextView>(R.id.connectionState).text = "已断开"
-                    Toast.makeText(this@TerminalActivity, "终端连接已断开", Toast.LENGTH_SHORT).show()
-                }
-            } finally { readerStarted = false }
+        if (subscription != null) return
+        val active = session ?: return
+        subscription = active.attachTerminal { text ->
+            runOnUiThread { appendOutput(text) }
         }
+    }
+
+    private fun stopReader() {
+        subscription?.close()
+        subscription = null
     }
 
     override fun onResume() {
         super.onResume()
-        if (::output.isInitialized && !readerStarted) startReader()
+        if (::output.isInitialized) {
+            startReader()
+            startMonitor()
+        }
+    }
+
+    /** 设备掉线时关闭终端页，回到首页（设备页也会同步退出）。 */
+    private fun startMonitor() {
+        if (monitorJob?.isActive == true) return
+        val active = session ?: return
+        monitorJob = lifecycleScope.launch {
+            active.monitorClosed {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    findViewById<TextView>(R.id.connectionState).text = "已断开"
+                    Toast.makeText(this@TerminalActivity, "设备连接已断开", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+        }
     }
 
     private fun sendCommand() {
@@ -83,9 +101,18 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        stopReader()
+        monitorJob?.cancel()
+        monitorJob = null
+        super.onPause()
+    }
+
     override fun onDestroy() {
         // 会话由 DeviceSessionHolder 统一管理，离开终端页不关闭连接。
-        readerStarted = false
+        stopReader()
+        monitorJob?.cancel()
+        monitorJob = null
         super.onDestroy()
     }
 

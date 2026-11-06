@@ -1,7 +1,15 @@
 package com.example.casdonlink.connection
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -58,24 +66,31 @@ class TelnetClient {
         private val input = socket.getInputStream()
         private val output = socket.getOutputStream()
         private val commandMutex = Mutex()
-        private val commandBuffer = StringBuilder()
         /** 整个会话共用同一解码器，保证 IAC 协商状态跨读取调用连续。 */
         private val decoder = TelnetDecoder { response -> writeRawBlocking(response) }
-        /** 串行化所有 socket 输入读取，避免多个协程抢同一数据流。 */
-        private val readLock = Any()
-        @Volatile private var reading = false
-        /** 有页面正在独占消费数据流时，存活探测需要让出读取。 */
-        @Volatile private var busy = false
-        @Volatile private var monitoring = false
+        /** 会话专属范围：后台收集协程在其中运行，关闭会话时一并取消。 */
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private var collectorJob: Job? = null
+        /** 对端断开时完成，供设备页等待「连接丢失」。 */
+        private val closedSignal = CompletableDeferred<Unit>()
+        private val lock = Any()
+        /** 已解码输出的滚动缓冲，供 [execute] 匹配结束标记（有上限）。 */
+        private val commandBuffer = StringBuilder()
+        /** 终端不在前台时保留的输出；回到终端页时补发，避免后台数据丢失。 */
+        private val terminalBacklog = ArrayDeque<String>()
+        private var backlogChars = 0
+        private var terminalSink: ((String) -> Unit)? = null
+        /** 受控命令执行期间暂停向终端转发，避免内部结束标记出现在终端里。 */
+        @Volatile private var terminalSuppressed = false
         @Volatile private var peerClosed = false
 
         /**
          * 建立 shell 会话：设备若要求登录则用 [credentials] 完成认证，否则直接等待提示符。
          * 设备 telnetd 通常不主动发送 banner，需先发送一次 CRLF 唤起提示符。
+         * 此阶段直接读取 socket；握手成功后才会启动后台收集协程。
          */
         internal fun handshake(credentials: Credentials?) {
-            busy = true
-            try {
+            run {
                 // 部分设备会把登录密码回显到终端，先登记以便日志脱敏。
                 credentials?.password?.let { Diagnostics.registerSecret(it) }
                 Diagnostics.log("发送 CRLF 唤起设备提示符")
@@ -120,21 +135,22 @@ class TelnetClient {
                                 if (sentUsername || sentPassword) "登录成功，已进入 shell"
                                 else "设备无需登录，已进入 shell"
                             )
-                            return
+                            // 局部返回，保证随后仍会启动后台收集协程。
+                            return@run
                         }
                     }
                 }
                 throw IllegalStateException("无法识别设备的登录提示，请确认设备 Telnet 服务是否正常")
-            } finally {
-                busy = false
             }
+            // 握手成功后才启动唯一读取者，此前由握手独占 socket。
+            startCollector()
         }
 
         /** 去掉刚刚发送内容在终端上的回显，避免其中的 `#`、`$` 被误判为提示符。 */
         private fun stripEcho(text: String, sent: String): String =
             if (sent.isEmpty()) text else text.replace(sent, "")
 
-        /** 阻塞读取并解码，直到 [predicate] 成立或超时。只能在 IO 线程调用。 */
+        /** 阻塞读取并解码，直到 [predicate] 成立或超时。只能在握手阶段调用。 */
         private fun readTextUntil(timeoutMs: Long, predicate: (String) -> Boolean): String {
             val deadline = System.currentTimeMillis() + timeoutMs
             val collected = StringBuilder()
@@ -151,118 +167,159 @@ class TelnetClient {
             throw IllegalStateException("等待设备响应超时（${timeoutMs / 1000} 秒）")
         }
 
-        /** 读取一段原始数据并解码；返回 null 表示对端已关闭。只能在 IO 线程调用。 */
-        private fun readChunk(buffer: ByteArray): String? = synchronized(readLock) {
+        /** 握手阶段直接读取一段数据并解码；返回 null 表示对端已关闭。 */
+        private fun readChunk(buffer: ByteArray): String? {
             val count = input.read(buffer)
             if (count < 0) return null
             if (count == 0) return ""
             Diagnostics.log("收到 ${Diagnostics.describe(buffer, count)}")
-            decoder.decode(buffer, count)
+            return decoder.decode(buffer, count)
         }
 
-        suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
-            reading = true
-            busy = true
-            Diagnostics.log("进入持续读取循环")
-            val buffer = ByteArray(4096)
-            try {
-                while (!socket.isClosed) {
-                    val text = try {
-                        readChunk(buffer)
-                    } catch (_: java.net.SocketTimeoutException) {
-                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                        continue
-                    }
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    if (text == null) {
-                        peerClosed = true
-                        Diagnostics.log("设备关闭了 TCP 连接（读到 EOF）")
-                        break
-                    }
-                    if (text.isNotEmpty()) {
-                        synchronized(commandBuffer) { commandBuffer.append(text) }
-                        onText(text)
+        /**
+         * 启动会话内唯一的后台读取者。握手完成后调用，此后 socket 只由这里读取：
+         * 解码结果同时供 [execute] 匹配标记、[attachTerminal] 的订阅者消费。
+         */
+        private fun startCollector() {
+            synchronized(lock) {
+                if (collectorJob != null) return
+                collectorJob = scope.launch {
+                    val buffer = ByteArray(8_192)
+                    var loggedBytes = 0
+                    var lastLogAt = 0L
+                    var lastPreview = ""
+                    try {
+                        while (!socket.isClosed) {
+                            val count = try {
+                                input.read(buffer)
+                            } catch (_: java.net.SocketTimeoutException) {
+                                currentCoroutineContext().ensureActive()
+                                continue
+                            }
+                            currentCoroutineContext().ensureActive()
+                            if (count < 0) {
+                                finishWithPeerClosed("设备关闭了 TCP 连接（读到 EOF）")
+                                return@launch
+                            }
+                            if (count == 0) continue
+                            val text = decoder.decode(buffer, count)
+                            if (text.isEmpty()) continue
+                            // 终端是持续流，逐包写日志会冲掉环形缓冲，这里按 1 秒聚合一次。
+                            loggedBytes += count
+                            lastPreview = Diagnostics.describe(buffer, count, 120)
+                            val now = System.currentTimeMillis()
+                            if (now - lastLogAt >= 1_000) {
+                                Diagnostics.log("收到 $loggedBytes 字节，最近：$lastPreview")
+                                loggedBytes = 0
+                                lastLogAt = now
+                            }
+                            publish(text)
+                        }
+                    } catch (_: CancellationException) {
+                        // 会话主动关闭，不算设备断开。
+                    } catch (error: Exception) {
+                        finishWithPeerClosed("读取中断：${error.javaClass.simpleName}: ${error.message}")
                     }
                 }
-            } finally {
-                reading = false
-                busy = false
+            }
+        }
+
+        /** 把解码后的文本分发给终端订阅者，或暂存到回放缓冲。 */
+        private fun publish(text: String) {
+            var sink: ((String) -> Unit)? = null
+            synchronized(lock) {
+                // 标记匹配缓冲有上限，避免长时间空闲后无限增长。
+                commandBuffer.append(text)
+                if (commandBuffer.length > MAX_COMMAND_BUFFER_CHARS) {
+                    commandBuffer.delete(0, commandBuffer.length - MAX_COMMAND_BUFFER_CHARS / 2)
+                }
+                // 受控命令（状态查询、文件操作）的输出属于内部交互，不进入终端视图。
+                if (!terminalSuppressed) {
+                    sink = terminalSink
+                    if (sink == null) {
+                        terminalBacklog.addLast(text)
+                        backlogChars += text.length
+                        while (backlogChars > MAX_BACKLOG_CHARS && terminalBacklog.isNotEmpty()) {
+                            backlogChars -= terminalBacklog.removeFirst().length
+                        }
+                    }
+                }
+            }
+            // 在锁外回调，避免订阅者阻塞收集协程时持有锁。
+            sink?.invoke(text)
+        }
+
+        private fun finishWithPeerClosed(reason: String) {
+            peerClosed = true
+            Diagnostics.log(reason)
+            closedSignal.complete(Unit)
+        }
+
+        /** 设备输出可能混用 CRLF 与单独 CR，统一成 LF 便于按行解析。 */
+        private fun normalizeNewlines(text: String): String =
+            text.replace("\r\n", "\n").replace('\r', '\n')
+
+        /**
+         * 订阅终端字节流。返回对象用于解除订阅；解除后输出重新进入回放缓冲，
+         * 因此离开终端页期间的设备输出不会丢失。
+         */
+        fun attachTerminal(sink: (String) -> Unit): AutoCloseable {
+            synchronized(lock) {
+                terminalSink = sink
+                if (terminalBacklog.isNotEmpty()) {
+                    val history = terminalBacklog.joinToString("")
+                    terminalBacklog.clear()
+                    backlogChars = 0
+                    sink(history)
+                }
+            }
+            return AutoCloseable {
+                synchronized(lock) { if (terminalSink === sink) terminalSink = null }
             }
         }
 
         /**
-         * 空闲时监控连接状态：设备断开（对端关闭或连接重置）时回调 [onClosed]。
-         * 其他页面正在读写（[busy]）时主动让出 socket，避免抢数据。
+         * 等待设备断开。读取由后台收集协程负责，这里只等待断开信号，
+         * 因此不会再与其它页面的读取相互竞争。
          */
-        suspend fun monitorClosed(onClosed: () -> Unit) = withContext(Dispatchers.IO) {
-            if (monitoring || socket.isClosed) return@withContext
-            monitoring = true
-            val buffer = ByteArray(256)
-            var closed = false
-            try {
-                while (!socket.isClosed) {
-                    if (busy || reading) {
-                        kotlinx.coroutines.delay(200)
-                        continue
-                    }
-                    val text = try {
-                        readChunk(buffer)
-                    } catch (_: java.net.SocketTimeoutException) {
-                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                        continue // 超时说明连接仍然存活
-                    }
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    if (text == null) {
-                        closed = true
-                        break
-                    }
-                    if (text.isNotEmpty()) synchronized(commandBuffer) { commandBuffer.append(text) }
-                }
-                closed = closed || socket.isClosed
-            } catch (_: kotlinx.coroutines.CancellationException) {
-                closed = false
-            } catch (_: Exception) {
-                closed = true
-            } finally {
-                monitoring = false
-            }
-            if (closed) {
-                peerClosed = true
-                Diagnostics.log("检测到设备已断开")
+        suspend fun monitorClosed(onClosed: () -> Unit) {
+            if (!isAlive()) {
                 onClosed()
+                return
             }
+            closedSignal.await()
+            onClosed()
         }
-
-        /** 连接是否仍然可用（本端未关闭且未检测到对端断开）。 */
-        fun isAlive(): Boolean = !socket.isClosed && !peerClosed
 
         suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
             withContext(Dispatchers.IO) {
-                busy = true
+                val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
+                synchronized(lock) { commandBuffer.clear() }
+                terminalSuppressed = true
                 try {
-                    val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
-                    synchronized(commandBuffer) { commandBuffer.clear() }
                     write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
                     val deadline = System.currentTimeMillis() + timeoutMs
                     while (System.currentTimeMillis() < deadline) {
-                        if (!reading) {
-                            val chunk = readTextAvailableBlocking(16_384)
-                            if (chunk.isNotEmpty()) synchronized(commandBuffer) { commandBuffer.append(chunk) }
-                        }
-                        val current = synchronized(commandBuffer) { commandBuffer.toString() }
+                        val current = synchronized(lock) { commandBuffer.toString() }
                         val markerIndex = current.indexOf(marker)
                         if (markerIndex >= 0) {
-                            val body = current.substringBefore(marker).substringAfter(command, "")
+                            // 部分设备不回显命令，因此只在正文确实以命令开头时才剥离回显。
+                            val raw = normalizeNewlines(current.substringBefore(marker))
+                            val body = if (raw.startsWith(command)) raw.removePrefix(command) else raw
                             val trailer = current.substring(markerIndex + marker.length)
                             val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
-                            if (code != 0) throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
+                            if (code != null && code != 0) {
+                                throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
+                            }
                             return@withContext body.trim()
                         }
-                        kotlinx.coroutines.delay(40)
+                        if (!isAlive()) throw IllegalStateException("设备连接已断开")
+                        kotlinx.coroutines.delay(20)
                     }
                     throw java.net.SocketTimeoutException("设备命令执行超时")
                 } finally {
-                    busy = false
+                    // 让残留的输出（如新提示符）重新进入终端流。
+                    terminalSuppressed = false
                 }
             }
         }
@@ -290,31 +347,19 @@ class TelnetClient {
             }
         }
 
-        /** 读取当前可用数据并解码。会切换到 IO 线程，可直接在协程中调用。 */
-        suspend fun readTextAvailable(maxBytes: Int = 16_384): String =
-            withContext(Dispatchers.IO) { readTextAvailableBlocking(maxBytes) }
-
-        /** 阻塞读取并解码，只能在 IO 线程调用。 */
-        internal fun readTextAvailableBlocking(maxBytes: Int): String = synchronized(readLock) {
-            val size = input.available().coerceAtMost(maxBytes)
-            if (size <= 0) return ""
-            val buffer = ByteArray(size)
-            val count = input.read(buffer)
-            if (count <= 0) return ""
-            Diagnostics.log("收到 ${Diagnostics.describe(buffer, count)}")
-            decoder.decode(buffer, count)
+        override fun close() {
+            runCatching { socket.close() }
+            collectorJob?.cancel()
+            scope.cancel()
         }
 
-        override fun close() = socket.close()
-
-        fun isReading(): Boolean = reading
-
-        /** 标记为独占访问，暂停空闲断开检测，避免与其抢读数据。 */
-        internal fun beginExclusive() { busy = true }
-
-        internal fun endExclusive() { busy = false }
+        fun isAlive(): Boolean = !socket.isClosed && !peerClosed
 
         private companion object {
+            /** 标记匹配缓冲上限：超过后丢弃较旧内容，只保留尾部。 */
+            const val MAX_COMMAND_BUFFER_CHARS = 262_144
+            /** 终端回放缓冲上限（字符），避免离开终端页过久占用内存。 */
+            const val MAX_BACKLOG_CHARS = 65_536
             /** 最多经历「用户名 → 密码 → 提示符」三轮交互。 */
             const val MAX_AUTH_STEPS = 5
             val LOGIN_PROMPT = Regex("(?im)(?:^|[\\r\\n])[^\\r\\n]{0,40}(?:login|username|user name|user)\\s*[:：]\\s*$")
