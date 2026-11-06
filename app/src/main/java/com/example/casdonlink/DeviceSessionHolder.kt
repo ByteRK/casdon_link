@@ -19,11 +19,16 @@ internal object DeviceSessionHolder {
     var port: Int = 23
         private set
 
+    @Volatile
+    var username: String = ""
+        private set
+
     @Synchronized
-    fun store(session: TelnetClient.Session, host: String, port: Int) {
+    fun store(session: TelnetClient.Session, host: String, port: Int, username: String = "") {
         current = session
         this.host = host
         this.port = port
+        this.username = username
     }
 
     @Synchronized
@@ -39,6 +44,7 @@ internal object DeviceSessionHolder {
         current = null
         host = ""
         port = 23
+        username = ""
     }
 
     /** 会话已被设备断开时清理引用（不重复关闭）。 */
@@ -47,5 +53,6 @@ internal object DeviceSessionHolder {
         current = null
         host = ""
         port = 23
+        username = ""
     }
 }

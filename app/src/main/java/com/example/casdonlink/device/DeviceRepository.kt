@@ -24,7 +24,7 @@ class DeviceRepository(private val session: TelnetClient.Session) {
             // 设备为 BusyBox + 低性能 ARM，首次命令可能需数秒，超时不宜过短。
             repeat(150) {
                 delay(100)
-                output.append(String(session.readAvailable(), Charsets.UTF_8))
+                output.append(session.readTextAvailable())
                 if (output.toString().contains(marker)) {
                     Diagnostics.log("状态查询完成，耗时 ${System.currentTimeMillis() - startedAt}ms")
                     return@withContext parseOverview(output.toString().substringBefore(marker))

@@ -13,7 +13,14 @@ class DeviceStore(context: Context) {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val ip = item.optString("ip")
-                if (ip.isNotBlank()) add(DeviceRecord(ip, item.optInt("port", 23), item.optLong("lastConnectedAt")))
+                if (ip.isNotBlank()) add(
+                    DeviceRecord(
+                        ipAddress = ip,
+                        port = item.optInt("port", 23),
+                        username = item.optString("username", ""),
+                        lastConnectedAt = item.optLong("lastConnectedAt")
+                    )
+                )
             }
         }.sortedByDescending { it.lastConnectedAt }
     }
@@ -22,7 +29,10 @@ class DeviceStore(context: Context) {
         val records = (listOf(record) + getAll().filterNot { it.ipAddress == record.ipAddress }).take(MAX_RECORDS)
         val array = JSONArray()
         records.forEach {
-            array.put(JSONObject().put("ip", it.ipAddress).put("port", it.port).put("lastConnectedAt", it.lastConnectedAt))
+            array.put(
+                JSONObject().put("ip", it.ipAddress).put("port", it.port)
+                    .put("username", it.username).put("lastConnectedAt", it.lastConnectedAt)
+            )
         }
         preferences.edit().putString(KEY_RECORDS, array.toString()).apply()
     }

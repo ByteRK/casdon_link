@@ -43,7 +43,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.connectButton).setOnClickListener {
             connect(
                 findViewById<EditText>(R.id.ipInput).text.toString().trim(),
-                findViewById<EditText>(R.id.portInput).text.toString().trim()
+                findViewById<EditText>(R.id.portInput).text.toString().trim(),
+                findViewById<EditText>(R.id.usernameInput).text.toString().trim(),
+                findViewById<EditText>(R.id.passwordInput).text.toString()
             )
         }
         // 长按连接按钮可随时查看最近一次连接诊断日志。
@@ -65,6 +67,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 从设备页返回（主动断开或设备已断开）时刷新最近设备列表。
         renderRecentDevices()
+        // 连接结束后不保留密码，避免明文留在输入框中。
+        findViewById<EditText>(R.id.passwordInput).setText("")
         findViewById<Button>(R.id.connectButton).apply {
             if (!connecting) {
                 isEnabled = true
@@ -73,7 +77,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun connect(host: String, portText: String) {
+    private fun connect(host: String, portText: String, usernameText: String = "", passwordText: String = "") {
         if (!isValidHost(host)) {
             showMessage("请输入有效的 IP 或主机名")
             return
@@ -83,6 +87,9 @@ class MainActivity : AppCompatActivity() {
             showMessage("端口需为 1-65535 之间的整数")
             return
         }
+        // 用户名/密码都为空表示设备无需登录；只填密码时用户名按常见设备默认值 root 处理。
+        val credentials = if (usernameText.isBlank() && passwordText.isEmpty()) null
+        else TelnetClient.Credentials(usernameText.ifBlank { "root" }, passwordText)
         val button = findViewById<Button>(R.id.connectButton)
         button.isEnabled = false
         button.text = "连接中…"
@@ -95,20 +102,18 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var session: TelnetClient.Session? = null
             try {
-                session = telnetClient.connect(host, port)
-                // 设备 telnetd 不主动发送 banner，需发送一次 CRLF 唤起 shell 提示符。
-                // 发送 "\n" 由编码器转换成 CRLF；若写成 "\r\n" 会产生 CR CR LF（多一个回车）。
-                session.write("\n")
-                if (!awaitPrompt(session)) throw IllegalStateException("设备未返回 shell 提示符，请确认设备已启动且 Telnet 服务可用")
-                Diagnostics.log("已收到 shell 提示符")
-                // 连接确认可用后交给设备页，首页不再持有会话。
-                DeviceSessionHolder.store(session, host, port)
-                deviceStore.save(DeviceRecord(host, port))
+                // connect 内部完成 TCP 建连、Telnet 协商与（必要时）登录，成功后已可执行 shell 命令。
+                session = telnetClient.connect(host, port, credentials = credentials)
+                DeviceSessionHolder.store(session, host, port, usernameText)
+                deviceStore.save(DeviceRecord(host, port, usernameText))
                 renderRecentDevices()
                 startActivity(Intent(this@MainActivity, DeviceActivity::class.java))
             } catch (error: Exception) {
                 Diagnostics.log("连接中止：${error.javaClass.simpleName}: ${error.message}")
                 runCatching { session?.close() }
+                if (error.message?.contains("需要登录") == true) {
+                    findViewById<EditText>(R.id.usernameInput).requestFocus()
+                }
                 showDiagnostics(error.message ?: "连接失败", error)
             } finally {
                 connecting = false
@@ -176,23 +181,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 轮询等待设备输出提示符：收到数据后再等待短暂静默，避免设备尚未就绪就发送命令。 */
-    private suspend fun awaitPrompt(session: TelnetClient.Session, timeoutMs: Long = 8_000): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        var received = false
-        var idle = 0
-        while (System.currentTimeMillis() < deadline) {
-            val chunk = session.readAvailable()
-            if (chunk.isNotEmpty()) {
-                received = true
-                idle = 0
-            } else if (received) {
-                if (++idle >= 3) return true
-            }
-            kotlinx.coroutines.delay(100)
-        }
-        return received
-    }
-
     private fun isValidHost(host: String): Boolean = host.isNotBlank() && host.length <= 253 &&
         host.matches(Regex("[A-Za-z0-9._:-]+"))
 
@@ -202,10 +190,13 @@ class MainActivity : AppCompatActivity() {
         // 因为 apply 内部的 this 是 TextView，直接调用 findViewById 只会在行视图子树里查找。
         val ipInput = findViewById<EditText>(R.id.ipInput)
         val portInput = findViewById<EditText>(R.id.portInput)
+        val usernameInput = findViewById<EditText>(R.id.usernameInput)
+        val passwordInput = findViewById<EditText>(R.id.passwordInput)
         container.removeAllViews()
         deviceStore.getAll().forEach { record ->
+            val displayName = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
             val row = TextView(this).apply {
-                text = "${record.ipAddress}  ·  Telnet ${record.port}"
+                text = "$displayName  ·  Telnet ${record.port}"
                 textSize = 14f
                 setTextColor(getColor(R.color.text_primary))
                 setPadding(18, 20, 18, 20)
@@ -215,7 +206,9 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     ipInput.setText(record.ipAddress)
                     portInput.setText(record.port.toString())
-                    connect(record.ipAddress, record.port.toString())
+                    usernameInput.setText(record.username)
+                    passwordInput.setText("")
+                    connect(record.ipAddress, record.port.toString(), record.username)
                 }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 }

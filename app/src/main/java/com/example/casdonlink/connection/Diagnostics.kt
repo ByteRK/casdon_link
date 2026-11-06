@@ -17,14 +17,27 @@ object Diagnostics {
     private const val LOGCAT_LIMIT = 3_500
 
     private val lines = ArrayDeque<String>()
+    private val secrets = LinkedHashSet<String>()
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     @Volatile
     private var networkFailure = false
 
+    /** 登记需要在日志中屏蔽的敏感文本（如登录密码），设备回显时同样会被脱敏。 */
+    @Synchronized
+    fun registerSecret(value: String) {
+        if (value.length >= 3) secrets.add(value)
+    }
+
+    private fun redact(text: String): String {
+        var result = text
+        synchronized(this) { secrets.toList() }.forEach { result = result.replace(it, "***") }
+        return result
+    }
+
     @Synchronized
     fun log(message: String) {
-        val line = "${timeFormat.format(Date())} $message"
+        val line = "${timeFormat.format(Date())} ${redact(message)}"
         if (message.startsWith("TCP 连接失败")) networkFailure = true
         lines.addLast(line)
         while (lines.size > MAX_LINES) lines.removeFirst()
@@ -37,6 +50,7 @@ object Diagnostics {
     @Synchronized
     fun clear() {
         lines.clear()
+        secrets.clear()
         networkFailure = false
     }
 

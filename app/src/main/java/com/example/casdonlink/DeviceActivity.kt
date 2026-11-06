@@ -42,7 +42,12 @@ class DeviceActivity : AppCompatActivity() {
         }
         session = active
         findViewById<TextView>(R.id.deviceTitle).text = DeviceSessionHolder.host
-        findViewById<TextView>(R.id.deviceState).text = "连接正常 · Telnet ${DeviceSessionHolder.port}"
+        val account = DeviceSessionHolder.username
+        findViewById<TextView>(R.id.deviceState).text = if (account.isBlank()) {
+            "连接正常 · Telnet ${DeviceSessionHolder.port}"
+        } else {
+            "连接正常 · Telnet ${DeviceSessionHolder.port} · $account"
+        }
 
         findViewById<Button>(R.id.refreshStatusButton).setOnClickListener { loadStatus(showToast = true) }
         findViewById<Button>(R.id.terminalButton).setOnClickListener {
