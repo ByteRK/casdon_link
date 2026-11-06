@@ -38,7 +38,12 @@ class MainActivity : AppCompatActivity() {
             connect(findViewById<EditText>(R.id.ipInput).text.toString().trim())
         }
         findViewById<Button>(R.id.filesButton).setOnClickListener {
-            Toast.makeText(this, "文件管理即将开放", Toast.LENGTH_SHORT).show()
+            val session = activeSession
+            if (session == null) showMessage("请先连接设备") else {
+                activeSession = null
+                TerminalSessionHolder.store(session)
+                startActivity(android.content.Intent(this, FilesActivity::class.java))
+            }
         }
         findViewById<Button>(R.id.terminalButton).setOnClickListener {
             val session = activeSession

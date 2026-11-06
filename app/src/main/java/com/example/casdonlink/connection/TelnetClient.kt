@@ -2,6 +2,8 @@ package com.example.casdonlink.connection
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -18,6 +20,8 @@ class TelnetClient {
     class Session internal constructor(private val socket: Socket) : AutoCloseable {
         private val input = socket.getInputStream()
         private val output = socket.getOutputStream()
+        private val commandMutex = Mutex()
+        private val commandBuffer = StringBuilder()
 
         suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
             val buffer = ByteArray(4096)
@@ -29,7 +33,32 @@ class TelnetClient {
                 val count = input.read(buffer)
                 if (count < 0) break
                 val text = decoder.decode(buffer, count)
-                if (text.isNotEmpty()) onText(text)
+                if (text.isNotEmpty()) {
+                    synchronized(commandBuffer) { commandBuffer.append(text) }
+                    onText(text)
+                }
+            }
+        }
+
+        suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
+                synchronized(commandBuffer) { commandBuffer.clear() }
+                write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
+                val deadline = System.currentTimeMillis() + timeoutMs
+                while (System.currentTimeMillis() < deadline) {
+                    val current = synchronized(commandBuffer) { commandBuffer.toString() }
+                    val markerIndex = current.indexOf(marker)
+                    if (markerIndex >= 0) {
+                        val body = current.substringBefore(marker).substringAfter(command, "")
+                        val trailer = current.substring(markerIndex + marker.length)
+                        val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
+                        if (code != 0) throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
+                        return@withContext body.trim()
+                    }
+                    kotlinx.coroutines.delay(40)
+                }
+                throw java.net.SocketTimeoutException("设备命令执行超时")
             }
         }
 
