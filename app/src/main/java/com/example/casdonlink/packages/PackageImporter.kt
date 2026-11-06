@@ -26,9 +26,11 @@ class PackageImporter(context: Context) {
                 val entries = zip.entries().asSequence().toList()
                 require(entries.size in 1..200) { "压缩包条目数量超限" }
                 var total = 0L
+                val paths = mutableSetOf<String>()
                 entries.forEach { entry ->
                     val normalized = entry.name.replace('\\', '/')
                     require(!normalized.startsWith('/') && normalized.split('/').none { it == ".." }) { "压缩包包含不安全路径" }
+                    require(paths.add(normalized)) { "压缩包包含重复路径" }
                     require(!entry.isDirectory) { "暂不支持显式目录条目" }
                     require(entry.size in 0..MAX_ENTRY_SIZE) { "压缩包条目过大或无法校验大小" }
                     total += entry.size
@@ -91,8 +93,14 @@ class PackageImporter(context: Context) {
         return normalized
     }
 
-    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
-        .joinToString("") { "%02x".format(it) }
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     data class ImportedPackage(val directory: File, val manifest: RepairPackage)
 

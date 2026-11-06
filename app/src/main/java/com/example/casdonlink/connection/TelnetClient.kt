@@ -22,8 +22,10 @@ class TelnetClient {
         private val output = socket.getOutputStream()
         private val commandMutex = Mutex()
         private val commandBuffer = StringBuilder()
+        @Volatile private var reading = false
 
         suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
+            reading = true
             val buffer = ByteArray(4096)
             val decoder = TelnetDecoder { response -> synchronized(this@Session) {
                 output.write(response)
@@ -38,6 +40,7 @@ class TelnetClient {
                     onText(text)
                 }
             }
+            reading = false
         }
 
         suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
@@ -47,7 +50,14 @@ class TelnetClient {
                 write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
                 val deadline = System.currentTimeMillis() + timeoutMs
                 while (System.currentTimeMillis() < deadline) {
-                    val current = synchronized(commandBuffer) { commandBuffer.toString() }
+                if (!reading) {
+                    val buffer = ByteArray(input.available().coerceAtMost(16_384))
+                    if (buffer.isNotEmpty()) {
+                        val count = input.read(buffer)
+                        if (count > 0) synchronized(commandBuffer) { commandBuffer.append(TelnetDecoder { }.decode(buffer, count)) }
+                    }
+                }
+                val current = synchronized(commandBuffer) { commandBuffer.toString() }
                     val markerIndex = current.indexOf(marker)
                     if (markerIndex >= 0) {
                         val body = current.substringBefore(marker).substringAfter(command, "")
@@ -76,6 +86,8 @@ class TelnetClient {
         }
 
         override fun close() = socket.close()
+
+        fun isReading(): Boolean = reading
     }
 }
 

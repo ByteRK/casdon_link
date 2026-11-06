@@ -12,10 +12,12 @@ import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 class TerminalActivity : AppCompatActivity() {
     private var session: TelnetClient.Session? = null
+    private var readerStarted = false
     private lateinit var output: TextView
     private lateinit var input: EditText
 
@@ -31,22 +33,35 @@ class TerminalActivity : AppCompatActivity() {
             finish()
             return
         }
-        lifecycleScope.launch {
-            try {
-                session?.readLoop { text -> runOnUiThread { appendOutput(text) } }
-            } catch (_: Exception) {
-                runOnUiThread {
-                    findViewById<TextView>(R.id.connectionState).text = "已断开"
-                    Toast.makeText(this@TerminalActivity, "终端连接已断开", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        startReader()
         findViewById<Button>(R.id.sendCommandButton).setOnClickListener { sendCommand() }
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
                 sendCommand(); true
             } else false
         }
+    }
+
+    private fun startReader() {
+        if (readerStarted || session == null || session?.isReading() == true) return
+        readerStarted = true
+        lifecycleScope.launch {
+            try {
+                session?.readLoop { text -> runOnUiThread { appendOutput(text) } }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                runOnUiThread {
+                    findViewById<TextView>(R.id.connectionState).text = "已断开"
+                    Toast.makeText(this@TerminalActivity, "终端连接已断开", Toast.LENGTH_SHORT).show()
+                }
+            } finally { readerStarted = false }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::output.isInitialized && !readerStarted) startReader()
     }
 
     private fun sendCommand() {

@@ -28,6 +28,7 @@ class FilesActivity : AppCompatActivity() {
     private lateinit var repository: FileRepository
     private var path = "/"
     private var files = emptyList<DeviceFile>()
+    private var activeHttpServer: PhoneHttpServer? = null
     private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) upload(uri)
     }
@@ -121,13 +122,14 @@ class FilesActivity : AppCompatActivity() {
             try {
                 withContext(Dispatchers.IO) { contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use(input::copyTo) } }
                 val server = PhoneHttpServer(temp)
+                activeHttpServer = server
                 val host = LocalAddress.find(this@FilesActivity) ?: throw IllegalStateException("无法识别本机局域网地址")
                 val url = server.start(host)
                 repository.uploadFromHttp(url, "$path/${temp.nameWithoutExtension}")
                 toast("传输完成")
                 load(path)
             } catch (error: Exception) { toast(error.message ?: "上传失败") }
-            finally { temp.delete() }
+            finally { activeHttpServer?.close(); activeHttpServer = null; temp.delete() }
         }
     }
 
@@ -148,7 +150,8 @@ class FilesActivity : AppCompatActivity() {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onDestroy() {
-        if (!isFinishing) TerminalSessionHolder.store(null) else TerminalSessionHolder.store(null)
+        activeHttpServer?.close()
+        TerminalSessionHolder.store(null)
         super.onDestroy()
     }
 

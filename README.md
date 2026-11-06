@@ -28,3 +28,23 @@
 
 配置包格式、Telnet 协议边界、文件传输与模块设计见 [技术方案](docs/TECHNICAL_DESIGN.md)。
 
+## 修复包快速格式
+
+ZIP 根目录放置 `manifest.json`，步骤按数组顺序执行。资源路径相对于 ZIP 根目录。示例详见技术方案。
+
+```json
+{
+  "formatVersion": 1,
+  "packageId": "sample-fix",
+  "name": "示例修复",
+  "version": "1.0.0",
+  "description": "示例包",
+  "steps": [
+    { "id": "put-config", "type": "file", "name": "传配置", "source": "files/app.conf", "target": "/userdata/app.conf" },
+    { "id": "restart", "type": "shell", "name": "重启服务", "command": "killall app; /usr/bin/app" }
+  ]
+}
+```
+
+文件步骤要求目标设备可通过局域网访问手机临时 HTTP 地址。建议把目标设置到 `/userdata` 等设备确认可写的位置；`/tmp` 为临时存储，重启后通常清空。
+
