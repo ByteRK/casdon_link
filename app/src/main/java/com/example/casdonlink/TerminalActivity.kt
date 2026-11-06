@@ -69,7 +69,7 @@ class TerminalActivity : AppCompatActivity() {
         if (command.isEmpty()) return
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) { session?.write("$command\n") }
+                session?.write("$command\n")
                 input.text.clear()
             } catch (error: Exception) {
                 Toast.makeText(this@TerminalActivity, error.message ?: "发送失败", Toast.LENGTH_SHORT).show()

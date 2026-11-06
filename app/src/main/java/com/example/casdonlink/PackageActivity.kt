@@ -17,7 +17,9 @@ import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.packages.PackageImporter
 import com.example.casdonlink.packages.RepairStep
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class PackageActivity : AppCompatActivity() {
@@ -100,7 +102,8 @@ class PackageActivity : AppCompatActivity() {
                                 val source = File(pkg.directory, step.source)
                                 val host = LocalAddress.find(this@PackageActivity) ?: error("无法识别本机局域网地址")
                                 val server = PhoneHttpServer(source)
-                                val url = server.start(host)
+                                // 绑定监听端口属于网络操作，必须在 IO 线程完成。
+                                val url = withContext(Dispatchers.IO) { server.start(host) }
                                 try { files.uploadFromHttp(url, step.target) } finally { server.close() }
                             }
                         }

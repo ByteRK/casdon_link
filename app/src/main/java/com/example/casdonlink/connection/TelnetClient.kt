@@ -37,10 +37,7 @@ class TelnetClient {
             reading = true
             Diagnostics.log("进入持续读取循环")
             val buffer = ByteArray(4096)
-            val decoder = TelnetDecoder { response -> synchronized(this@Session) {
-                output.write(response)
-                output.flush()
-            } }
+            val decoder = TelnetDecoder { response -> writeRawBlocking(response) }
             while (!socket.isClosed) {
                 val count = input.read(buffer)
                 if (count < 0) {
@@ -86,22 +83,38 @@ class TelnetClient {
             }
         }
 
-        @Synchronized
-        fun write(text: String) {
-            Diagnostics.log("发送：${text.replace("\r", "\\r").replace("\n", "\\n")}")
-            output.write(TelnetEncoder.encode(text))
-            output.flush()
+        /** 发送数据。会切换到 IO 线程，可直接在协程中调用。 */
+        suspend fun write(text: String) = withContext(Dispatchers.IO) { writeBlocking(text) }
+
+        /** 阻塞发送，只能在 IO 线程调用（获取锁后会直接写 socket）。 */
+        internal fun writeBlocking(text: String) {
+            synchronized(this) {
+                Diagnostics.log("发送：${text.replace("\r", "\\r").replace("\n", "\\n")}")
+                writeRawBlocking(TelnetEncoder.encode(text))
+            }
         }
 
-        @Synchronized
-        fun readAvailable(maxBytes: Int = 16_384): ByteArray {
+        /** 直接写原始字节（telnet 协商应答），不能经过文本编码器。 */
+        private fun writeRawBlocking(bytes: ByteArray) {
+            synchronized(this) {
+                output.write(bytes)
+                output.flush()
+            }
+        }
+
+        /** 读取当前可用的数据。会切换到 IO 线程，可直接在协程中调用。 */
+        suspend fun readAvailable(maxBytes: Int = 16_384): ByteArray =
+            withContext(Dispatchers.IO) { readAvailableBlocking(maxBytes) }
+
+        /** 阻塞读取，只能在 IO 线程调用。 */
+        internal fun readAvailableBlocking(maxBytes: Int): ByteArray = synchronized(this) {
             val size = input.available().coerceAtMost(maxBytes)
             if (size <= 0) return ByteArray(0)
             val buffer = ByteArray(size)
             val count = input.read(buffer)
             if (count <= 0) return ByteArray(0)
             Diagnostics.log("收到 ${Diagnostics.describe(buffer, count)}")
-            return if (count == buffer.size) buffer else buffer.copyOf(count)
+            if (count == buffer.size) buffer else buffer.copyOf(count)
         }
 
         override fun close() = socket.close()
