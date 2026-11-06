@@ -291,27 +291,41 @@ class TelnetClient {
             onClosed()
         }
 
+        /**
+         * 执行受控命令并返回命令输出。
+         *
+         * 交互式 shell 会把输入的命令回显到同一个数据流里，若把标记直接写进命令，
+         * 回显中就会出现完整标记，被误判为命令结束（文件列表因此拿到空输出）。
+         * 这里把起止标记都拆成两段、由设备端 printf 拼接：回显里不出现完整标记，
+         * 且正文始终取「起始标记之后、结束标记之前」，与设备是否回显无关。
+         */
         suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
             withContext(Dispatchers.IO) {
-                val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
+                val token = java.util.UUID.randomUUID().toString().replace("-", "")
+                val beginMarker = "__CL_BEGIN_${token}__"
+                val endMarker = "__CL_DONE_${token}__"
+                val beginCommand = "printf '\\n%s%s\\n' '__CL_BEGIN_' '${token}__'"
+                val endCommand = "printf '\\n%s%s:%s\\n' '__CL_DONE_' '${token}__' \"$?\""
+                val payload = buildPayload(command, beginCommand, endCommand)
                 synchronized(lock) { commandBuffer.clear() }
                 terminalSuppressed = true
                 try {
-                    write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
+                    write("$payload\n")
                     val deadline = System.currentTimeMillis() + timeoutMs
                     while (System.currentTimeMillis() < deadline) {
                         val current = synchronized(lock) { commandBuffer.toString() }
-                        val markerIndex = current.indexOf(marker)
-                        if (markerIndex >= 0) {
-                            // 部分设备不回显命令，因此只在正文确实以命令开头时才剥离回显。
-                            val raw = normalizeNewlines(current.substringBefore(marker))
-                            val body = if (raw.startsWith(command)) raw.removePrefix(command) else raw
-                            val trailer = current.substring(markerIndex + marker.length)
+                        val beginIndex = current.indexOf(beginMarker)
+                        val endIndex = current.indexOf(endMarker)
+                        if (beginIndex >= 0 && endIndex > beginIndex) {
+                            val body = normalizeNewlines(
+                                current.substring(beginIndex + beginMarker.length, endIndex)
+                            ).trim()
+                            val trailer = current.substring(endIndex + endMarker.length)
                             val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
                             if (code != null && code != 0) {
-                                throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
+                                throw IllegalStateException("命令失败（$code）：${body.takeLast(240)}")
                             }
-                            return@withContext body.trim()
+                            return@withContext body
                         }
                         if (!isAlive()) throw IllegalStateException("设备连接已断开")
                         kotlinx.coroutines.delay(20)
@@ -322,6 +336,21 @@ class TelnetClient {
                     terminalSuppressed = false
                 }
             }
+        }
+
+        /**
+         * 生成「起始标记 + 命令 + 结束标记」的脚本。
+         *
+         * 单行命令整体写在一行里：shell 要等整行读完才执行，因此命令回显和
+         * readline 的重绘控制序列都早于起始标记输出，命令正文保持干净。
+         * 多行命令（修复包里的脚本片段）按原样分行，避免破坏其结构。
+         */
+        private fun buildPayload(command: String, beginCommand: String, endCommand: String): String {
+            val single = command.trim()
+            if (single.isEmpty()) return "$beginCommand; $endCommand"
+            if (command.contains('\n')) return "$beginCommand\n$command\n$endCommand"
+            val separator = if (single.endsWith("&") || single.endsWith(";")) " " else "; "
+            return "$beginCommand; $single$separator$endCommand"
         }
 
         /** 发送数据。会切换到 IO 线程，可直接在协程中调用。[secret] 为 true 时不记录内容。 */

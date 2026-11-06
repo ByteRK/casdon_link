@@ -20,6 +20,8 @@ class TerminalActivity : AppCompatActivity() {
     private var monitorJob: Job? = null
     private lateinit var output: TextView
     private lateinit var input: EditText
+    /** 上一数据块末尾未闭合的 ANSI 转义序列。 */
+    private var ansiCarry = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,11 +96,64 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private fun appendOutput(text: String) {
-        output.append(text.replace("\u0000", ""))
+        val clean = sanitizeAnsi(text)
+        if (clean.isEmpty()) return
+        output.append(clean)
         if (output.length() > MAX_OUTPUT_CHARS) output.text = output.text.takeLast(MAX_OUTPUT_CHARS)
         findViewById<ScrollView>(R.id.terminalScroll).post {
             findViewById<ScrollView>(R.id.terminalScroll).fullScroll(ScrollView.FOCUS_DOWN)
         }
+    }
+
+    /**
+     * 去掉 ANSI 控制序列（颜色、光标控制、OSC 标题等）并统一换行。
+     * TextView 无法渲染这些序列，原样显示会变成 `[1;32m` 之类的乱码。
+     * 被截断在数据块边界的序列会暂存到下一块继续处理。
+     */
+    private fun sanitizeAnsi(input: String): String {
+        if (ansiCarry.isEmpty() && input.indexOf(ESC) < 0) return input.replace("\r", "")
+        val text = ansiCarry + input
+        ansiCarry = ""
+        val builder = StringBuilder(text.length)
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
+            if (char != ESC) {
+                // NUL 在 TextView 中无意义，直接丢弃。
+                if (char != '\u0000') builder.append(char)
+                index++
+                continue
+            }
+            val next = text.getOrNull(index + 1) ?: break
+            when (next) {
+                // CSI: ESC [ 参数 终止字节
+                '[' -> {
+                    var cursor = index + 2
+                    while (cursor < text.length && text[cursor] !in '@'..'~') cursor++
+                    if (cursor >= text.length) break
+                    index = cursor + 1
+                }
+                // OSC: ESC ] ... BEL 或 ESC \
+                ']' -> {
+                    var cursor = index + 2
+                    var closed = false
+                    while (cursor < text.length) {
+                        if (text[cursor] == '\u0007') { closed = true; break }
+                        if (text[cursor] == ESC && text.getOrNull(cursor + 1) == '\\') {
+                            cursor++
+                            closed = true
+                            break
+                        }
+                        cursor++
+                    }
+                    if (!closed) break
+                    index = cursor + 1
+                }
+                else -> index += 2
+            }
+        }
+        if (index < text.length) ansiCarry = text.substring(index)
+        return builder.toString().replace("\r", "")
     }
 
     override fun onPause() {
@@ -119,5 +174,6 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_HOST = "host"
         const val MAX_OUTPUT_CHARS = 100_000
+        private const val ESC = '\u001B'
     }
 }
