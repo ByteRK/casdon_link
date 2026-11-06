@@ -156,14 +156,6 @@
                 android:textAllCaps="false"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="设备无需登录时留空；需要登录时填写账号密码，密码不会被保存"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView

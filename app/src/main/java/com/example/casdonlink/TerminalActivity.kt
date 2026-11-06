@@ -1,13 +1,17 @@
 package com.example.casdonlink
 
 import android.os.Bundle
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.CancellationException
@@ -25,7 +29,9 @@ class TerminalActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContentView(R.layout.activity_terminal)
+        applyKeyboardInsets()
         output = findViewById(R.id.terminalOutput)
         input = findViewById(R.id.commandInput)
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
@@ -42,6 +48,31 @@ class TerminalActivity : AppCompatActivity() {
                 sendCommand(); true
             } else false
         }
+    }
+
+    /**
+     * 适配系统栏与输入法：targetSdk 35+ 强制 edge-to-edge，系统栏和软键盘会覆盖内容，
+     * 仅靠 manifest 的 adjustResize 不再生效，需要按 IME insets 给根布局追加底部留白，
+     * 否则输入框会被键盘挡住，看起来像“输入了但看不到”。
+     */
+    private fun applyKeyboardInsets() {
+        val root = findViewById<View>(R.id.terminalRoot)
+        val base = intArrayOf(root.paddingLeft, root.paddingTop, root.paddingRight, root.paddingBottom)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
+            )
+            view.setPadding(
+                base[0] + bars.left,
+                base[1] + bars.top,
+                base[2] + bars.right,
+                base[3] + bars.bottom
+            )
+            // 键盘弹出后输出区变矮，保持最新内容可见。
+            view.post { findViewById<ScrollView>(R.id.terminalScroll).fullScroll(ScrollView.FOCUS_DOWN) }
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     /** 订阅会话的后台字节流；离开页面时解除订阅，输出会继续进入回放缓冲。 */

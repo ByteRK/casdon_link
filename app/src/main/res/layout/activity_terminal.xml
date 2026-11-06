@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/terminalRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
@@ -70,8 +71,8 @@
             android:background="@drawable/bg_input"
             android:fontFamily="monospace"
             android:hint="输入命令"
-            android:imeOptions="actionSend"
-            android:inputType="text"
+            android:imeOptions="actionSend|flagNoExtractUi|flagNoPersonalizedLearning"
+            android:inputType="textNoSuggestions"
             android:paddingStart="14dp"
             android:paddingEnd="14dp"
             android:singleLine="true"
