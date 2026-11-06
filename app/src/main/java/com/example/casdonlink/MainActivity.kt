@@ -16,10 +16,7 @@ import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
 import com.example.casdonlink.device.DeviceRepository
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.InetAddress
 
 class MainActivity : AppCompatActivity() {
     private val telnetClient = TelnetClient()
@@ -44,7 +41,13 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "文件管理即将开放", Toast.LENGTH_SHORT).show()
         }
         findViewById<Button>(R.id.terminalButton).setOnClickListener {
-            Toast.makeText(this, "交互终端即将开放", Toast.LENGTH_SHORT).show()
+            val session = activeSession
+            if (session == null) showMessage("请先连接设备") else {
+                activeSession = null
+                TerminalSessionHolder.store(session)
+                startActivity(android.content.Intent(this, TerminalActivity::class.java)
+                    .putExtra(TerminalActivity.EXTRA_HOST, findViewById<TextView>(R.id.deviceTitle).text))
+            }
         }
     }
 

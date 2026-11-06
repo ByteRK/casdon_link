@@ -2,8 +2,8 @@ package com.example.casdonlink.connection
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -16,12 +16,26 @@ class TelnetClient {
     }
 
     class Session internal constructor(private val socket: Socket) : AutoCloseable {
-        private val input = BufferedInputStream(socket.getInputStream())
-        private val output = BufferedOutputStream(socket.getOutputStream())
+        private val input = socket.getInputStream()
+        private val output = socket.getOutputStream()
+
+        suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
+            val buffer = ByteArray(4096)
+            val decoder = TelnetDecoder { response -> synchronized(this@Session) {
+                output.write(response)
+                output.flush()
+            } }
+            while (!socket.isClosed) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                val text = decoder.decode(buffer, count)
+                if (text.isNotEmpty()) onText(text)
+            }
+        }
 
         @Synchronized
         fun write(text: String) {
-            output.write(text.toByteArray(Charsets.UTF_8))
+            output.write(TelnetEncoder.encode(text))
             output.flush()
         }
 
@@ -33,5 +47,74 @@ class TelnetClient {
         }
 
         override fun close() = socket.close()
+    }
+}
+
+private class TelnetDecoder(private val respond: (ByteArray) -> Unit) {
+    private enum class State { DATA, IAC, OPTION, SUBNEGOTIATION, SUBNEGOTIATION_IAC }
+    private var state = State.DATA
+
+    fun decode(bytes: ByteArray, count: Int): String {
+        val output = ArrayList<Byte>(count)
+        for (index in 0 until count) {
+            val value = bytes[index].toInt() and 0xff
+            when (state) {
+                State.DATA -> when (value) {
+                    IAC -> state = State.IAC
+                    else -> output.add(bytes[index])
+                }
+                State.IAC -> when (value) {
+                    IAC -> { output.add(IAC.toByte()); state = State.DATA }
+                    WILL, WONT, DO, DONT -> { command = value; state = State.OPTION }
+                    SB -> state = State.SUBNEGOTIATION
+                    else -> state = State.DATA
+                }
+                State.OPTION -> {
+                    val reply = when (command) {
+                        WILL -> byteArrayOf(IAC.toByte(), DONT.toByte(), value.toByte())
+                        DO -> byteArrayOf(IAC.toByte(), WONT.toByte(), value.toByte())
+                        else -> null
+                    }
+                    if (reply != null) respond(reply)
+                    state = State.DATA
+                }
+                State.SUBNEGOTIATION -> if (value == IAC) state = State.SUBNEGOTIATION_IAC
+                State.SUBNEGOTIATION_IAC -> state = if (value == SE) State.DATA else State.SUBNEGOTIATION
+            }
+        }
+        return output.toByteArray().toString(Charsets.UTF_8)
+    }
+
+    private var command = 0
+
+    private companion object {
+        const val SE = 240
+        const val SB = 250
+        const val WILL = 251
+        const val WONT = 252
+        const val DO = 253
+        const val DONT = 254
+        const val IAC = 255
+    }
+}
+
+private object TelnetEncoder {
+    fun encode(text: String): ByteArray {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val output = java.io.ByteArrayOutputStream(bytes.size + 8)
+        bytes.forEachIndexed { index, byte ->
+            val value = byte.toInt() and 0xff
+            if (value == 13) {
+                output.write(13)
+                if (index + 1 >= bytes.size || bytes[index + 1].toInt() != 10) output.write(0)
+            } else if (value == 10) {
+                output.write(13)
+                output.write(10)
+            } else {
+                if (value == 255) output.write(255)
+                output.write(value)
+            }
+        }
+        return output.toByteArray()
     }
 }
