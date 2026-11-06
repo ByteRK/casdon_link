@@ -198,6 +198,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderRecentDevices() {
         val container = findViewById<LinearLayout>(R.id.recentDevices)
+        // 注意：这里必须取到 Activity 级别的控件引用再传入 apply，
+        // 因为 apply 内部的 this 是 TextView，直接调用 findViewById 只会在行视图子树里查找。
+        val ipInput = findViewById<EditText>(R.id.ipInput)
+        val portInput = findViewById<EditText>(R.id.portInput)
         container.removeAllViews()
         deviceStore.getAll().forEach { record ->
             val row = TextView(this).apply {
@@ -209,8 +213,8 @@ class MainActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
-                    findViewById<EditText>(R.id.ipInput).setText(record.ipAddress)
-                    findViewById<EditText>(R.id.portInput).setText(record.port.toString())
+                    ipInput.setText(record.ipAddress)
+                    portInput.setText(record.port.toString())
                     connect(record.ipAddress, record.port.toString())
                 }
             }
