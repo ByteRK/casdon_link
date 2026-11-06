@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:orientation="vertical" android:padding="20dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <Button android:id="@+id/packageBack" android:layout_width="52dp" android:layout_height="48dp" android:text="‹" android:textSize="24sp" />
+        <TextView android:id="@+id/packageTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:text="修复包" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold" />
+        <TextView android:id="@+id/packageProgress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/secondary" android:textSize="12sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/packageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:textColor="@color/text_secondary" android:textSize="13sp" />
+    <ListView android:id="@+id/stepList" android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="16dp" android:layout_weight="1" android:divider="#22334455" android:dividerHeight="1dp" />
+    <Button android:id="@+id/runPackage" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:text="执行修复" android:textAllCaps="false" />
+</LinearLayout>

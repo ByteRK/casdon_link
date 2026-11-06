@@ -16,6 +16,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CasdonLink">
         <activity
+            android:name=".PackageActivity"
+            android:exported="false" />
+        <activity
             android:name=".FilesActivity"
             android:exported="false" />
         <activity

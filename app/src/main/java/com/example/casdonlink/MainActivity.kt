@@ -37,6 +37,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.connectButton).setOnClickListener {
             connect(findViewById<EditText>(R.id.ipInput).text.toString().trim())
         }
+        findViewById<Button>(R.id.importPackageButton).setOnClickListener {
+            val session = activeSession
+            if (session == null) showMessage("请先连接设备") else {
+                activeSession = null
+                TerminalSessionHolder.store(session)
+                startActivity(android.content.Intent(this, PackageActivity::class.java))
+            }
+        }
         findViewById<Button>(R.id.filesButton).setOnClickListener {
             val session = activeSession
             if (session == null) showMessage("请先连接设备") else {

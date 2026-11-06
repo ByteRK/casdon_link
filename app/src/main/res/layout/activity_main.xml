@@ -140,6 +140,14 @@
             </LinearLayout>
         </LinearLayout>
 
+        <Button
+            android:id="@+id/importPackageButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="14dp"
+            android:text="导入修复包"
+            android:textAllCaps="false" />
+
         <TextView
             android:id="@+id/recentTitle"
             android:layout_width="match_parent"
