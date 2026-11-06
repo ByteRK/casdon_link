@@ -330,6 +330,11 @@ class TelnetClient {
                         if (!isAlive()) throw IllegalStateException("设备连接已断开")
                         kotlinx.coroutines.delay(20)
                     }
+                    // 记录设备实际回显，便于判断是命令没执行还是标记被吞掉。
+                    val captured = normalizeNewlines(
+                        synchronized(lock) { commandBuffer.toString() }
+                    ).take(400)
+                    Diagnostics.log("命令超时，已捕获输出：${captured.ifBlank { "（空）" }}")
                     throw java.net.SocketTimeoutException("设备命令执行超时")
                 } finally {
                     // 让残留的输出（如新提示符）重新进入终端流。

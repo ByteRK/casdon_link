@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.files.DeviceFile
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.files.PhoneHttpServer
@@ -61,9 +62,28 @@ class FilesActivity : AppCompatActivity() {
             try {
                 path = target
                 findViewById<TextView>(R.id.filesPath).text = path
-                files = repository.list(path)
+                setHint("读取中…")
+                val result = repository.list(path)
+                files = result
                 findViewById<ListView>(R.id.fileList).adapter = FileAdapter()
-            } catch (error: Exception) { toast(error.message ?: "读取失败") }
+                // 空目录和「命令没有输出」在界面上要能区分，否则只能看到一片空白。
+                setHint(if (result.isEmpty()) "目录为空 · 点击重试" else "${result.size} 项 · 长按可操作")
+            } catch (error: Exception) {
+                files = emptyList()
+                findViewById<ListView>(R.id.fileList).adapter = FileAdapter()
+                val reason = error.message ?: error.javaClass.simpleName
+                Diagnostics.log("列目录失败（$path）：$reason")
+                setHint("读取失败：$reason\n点击重试")
+                toast(reason)
+            }
+        }
+    }
+
+    /** 顶部提示条同时充当状态与重试入口。 */
+    private fun setHint(text: String) {
+        findViewById<TextView>(R.id.filesHint).apply {
+            this.text = text
+            setOnClickListener { load(path) }
         }
     }
 
