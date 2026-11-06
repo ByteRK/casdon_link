@@ -1,5 +1,6 @@
 package com.example.casdonlink.device
 
+import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -16,12 +17,17 @@ class DeviceRepository(private val session: TelnetClient.Session) {
                 "printf '\\nMEMORY\\n'; head -n 3 /proc/meminfo 2>/dev/null; printf '\\n$marker\\n'\n"
         )
         val output = StringBuilder()
+        val startedAt = System.currentTimeMillis()
         // 设备为 BusyBox + 低性能 ARM，首次命令可能需数秒，超时不宜过短。
         repeat(150) {
             delay(100)
             output.append(String(session.readAvailable(), Charsets.UTF_8))
-            if (output.toString().contains(marker)) return@withContext parseOverview(output.toString().substringBefore(marker))
+            if (output.toString().contains(marker)) {
+                Diagnostics.log("状态查询完成，耗时 ${System.currentTimeMillis() - startedAt}ms")
+                return@withContext parseOverview(output.toString().substringBefore(marker))
+            }
         }
+        Diagnostics.log("状态查询超时，15 秒内共收到 ${output.length} 字符")
         throw IllegalStateException("设备未返回状态信息")
     }
 

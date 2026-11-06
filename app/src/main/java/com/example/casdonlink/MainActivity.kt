@@ -1,17 +1,24 @@
 package com.example.casdonlink
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.casdonlink.connection.Diagnostics
+import com.example.casdonlink.connection.NetworkDiagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
@@ -35,7 +42,23 @@ class MainActivity : AppCompatActivity() {
         deviceStore = DeviceStore(this)
         renderRecentDevices()
         findViewById<Button>(R.id.connectButton).setOnClickListener {
-            connect(findViewById<EditText>(R.id.ipInput).text.toString().trim())
+            connect(
+                findViewById<EditText>(R.id.ipInput).text.toString().trim(),
+                findViewById<EditText>(R.id.portInput).text.toString().trim()
+            )
+        }
+        // 长按连接按钮可随时查看最近一次连接诊断日志。
+        findViewById<Button>(R.id.connectButton).setOnLongClickListener {
+            showDiagnostics("连接诊断日志", null)
+            true
+        }
+        findViewById<Button>(R.id.diagnoseButton).setOnClickListener {
+            val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()
+            if (!isValidHost(host)) {
+                showMessage("请先输入有效的 IP 或主机名")
+                return@setOnClickListener
+            }
+            runNetworkDiagnostics(host, parsePort(findViewById<EditText>(R.id.portInput).text.toString().trim()))
         }
         findViewById<Button>(R.id.importPackageButton).setOnClickListener {
             val session = activeSession
@@ -64,39 +87,106 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun connect(host: String) {
+    private fun connect(host: String, portText: String) {
         if (!isValidHost(host)) {
             showMessage("请输入有效的 IP 或主机名")
+            return
+        }
+        val port = parsePort(portText)
+        if (port == null) {
+            showMessage("端口需为 1-65535 之间的整数")
             return
         }
         val button = findViewById<Button>(R.id.connectButton)
         button.isEnabled = false
         button.text = "连接中…"
+        Diagnostics.clear()
+        Diagnostics.log("===== 开始连接 $host:$port =====")
+        Diagnostics.logNetworkContext()
         lifecycleScope.launch {
             try {
                 activeSession?.close()
-                val session = telnetClient.connect(host)
+                val session = telnetClient.connect(host, port)
                 activeSession = session
                 // 设备 telnetd 不主动发送 banner，需发送一次 CRLF 唤起 shell 提示符。
                 // 发送 "\n" 由编码器转换成 CRLF；若写成 "\r\n" 会产生 CR CR LF（多一个回车）。
                 session.write("\n")
                 if (!awaitPrompt(session)) throw IllegalStateException("设备未返回 shell 提示符，请确认设备已启动且 Telnet 服务可用")
+                Diagnostics.log("已收到 shell 提示符")
                 val info = DeviceRepository(session).readOverview()
-                deviceStore.save(DeviceRecord(host))
+                deviceStore.save(DeviceRecord(host, port))
                 findViewById<TextView>(R.id.deviceTitle).text = host
                 findViewById<TextView>(R.id.deviceStatus).text = "${info.system}\n运行时间 · ${info.uptime}\n${info.memory}"
                 findViewById<View>(R.id.devicePanel).visibility = View.VISIBLE
                 renderRecentDevices()
                 showMessage("设备已连接")
             } catch (error: Exception) {
+                Diagnostics.log("连接中止：${error.javaClass.simpleName}: ${error.message}")
                 activeSession?.close()
                 activeSession = null
-                showMessage(error.message ?: "连接失败")
+                showDiagnostics(error.message ?: "连接失败", error)
             } finally {
                 button.isEnabled = true
                 button.text = "连接设备"
             }
         }
+    }
+
+    private fun parsePort(text: String): Int? {
+        val value = text.toIntOrNull() ?: return null
+        return if (value in 1..65535) value else null
+    }
+
+    /** 后台执行网络自检：网段判断 + ICMP + 常见端口探测。 */
+    private fun runNetworkDiagnostics(host: String, port: Int?) {
+        val targetPort = port ?: 23
+        val button = findViewById<Button>(R.id.diagnoseButton)
+        button.isEnabled = false
+        button.text = "诊断中…"
+        lifecycleScope.launch {
+            val report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                NetworkDiagnostics.report(this@MainActivity, host, targetPort)
+            }
+            button.isEnabled = true
+            button.text = "网络诊断"
+            Diagnostics.log("网络自检结果：\n$report")
+            showTextDialog("网络诊断", report)
+        }
+    }
+
+    /** 展示本次连接诊断日志，可直接复制后分享。 */
+    private fun showDiagnostics(title: String, error: Exception?) {
+        val reason = error?.let { "${it.javaClass.simpleName}: ${it.message}" }
+        val body = buildString {
+            if (reason != null) append("$reason\n\n")
+            append(Diagnostics.dump())
+            val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()
+            if (host.isNotBlank() && Diagnostics.suggestsNetworkIssue()) {
+                append("\n\n提示：TCP 连接超时通常意味着网络层不通（不同网段 / AP 隔离 / 防火墙）。\n点击「网络诊断」可查看网段判断与端口探测结果。")
+            }
+        }
+        showTextDialog(title, body)
+    }
+
+    /** 通用文本展示弹窗，支持一键复制。 */
+    private fun showTextDialog(title: String, body: String) {
+        val text = TextView(this).apply {
+            this.text = body
+            textSize = 11f
+            setTextIsSelectable(true)
+            setPadding(36, 24, 36, 24)
+        }
+        val scroll = ScrollView(this).apply { addView(text) }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(scroll)
+            .setPositiveButton("复制") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink $title", body))
+                showMessage("已复制到剪贴板")
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     /** 轮询等待设备输出提示符：收到数据后再等待短暂静默，避免设备尚未就绪就发送命令。 */
@@ -134,7 +224,8 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener {
                     findViewById<EditText>(R.id.ipInput).setText(record.ipAddress)
-                    connect(record.ipAddress)
+                    findViewById<EditText>(R.id.portInput).setText(record.port.toString())
+                    connect(record.ipAddress, record.port.toString())
                 }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 }

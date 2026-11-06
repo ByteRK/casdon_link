@@ -11,9 +11,18 @@ import java.net.Socket
 
 class TelnetClient {
     suspend fun connect(host: String, port: Int = 23, timeoutMs: Int = 5_000): Session = withContext(Dispatchers.IO) {
+        Diagnostics.log("开始连接 $host:$port（超时 ${timeoutMs}ms）")
+        val startedAt = System.currentTimeMillis()
         val socket = Socket()
-        socket.tcpNoDelay = true
-        socket.connect(InetSocketAddress(host, port), timeoutMs)
+        try {
+            socket.tcpNoDelay = true
+            socket.connect(InetSocketAddress(host, port), timeoutMs)
+        } catch (error: Exception) {
+            Diagnostics.log("TCP 连接失败：${error.javaClass.simpleName}: ${error.message}")
+            runCatching { socket.close() }
+            throw error
+        }
+        Diagnostics.log("TCP 连接成功，耗时 ${System.currentTimeMillis() - startedAt}ms")
         Session(socket)
     }
 
@@ -26,6 +35,7 @@ class TelnetClient {
 
         suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
             reading = true
+            Diagnostics.log("进入持续读取循环")
             val buffer = ByteArray(4096)
             val decoder = TelnetDecoder { response -> synchronized(this@Session) {
                 output.write(response)
@@ -33,7 +43,11 @@ class TelnetClient {
             } }
             while (!socket.isClosed) {
                 val count = input.read(buffer)
-                if (count < 0) break
+                if (count < 0) {
+                    Diagnostics.log("设备关闭了 TCP 连接（读到 EOF）")
+                    break
+                }
+                Diagnostics.log("持续读取 ${Diagnostics.describe(buffer, count)}")
                 val text = decoder.decode(buffer, count)
                 if (text.isNotEmpty()) {
                     synchronized(commandBuffer) { commandBuffer.append(text) }
@@ -74,6 +88,7 @@ class TelnetClient {
 
         @Synchronized
         fun write(text: String) {
+            Diagnostics.log("发送：${text.replace("\r", "\\r").replace("\n", "\\n")}")
             output.write(TelnetEncoder.encode(text))
             output.flush()
         }
@@ -82,7 +97,11 @@ class TelnetClient {
         fun readAvailable(maxBytes: Int = 16_384): ByteArray {
             val size = input.available().coerceAtMost(maxBytes)
             if (size <= 0) return ByteArray(0)
-            return ByteArray(size).also { input.read(it) }
+            val buffer = ByteArray(size)
+            val count = input.read(buffer)
+            if (count <= 0) return ByteArray(0)
+            Diagnostics.log("收到 ${Diagnostics.describe(buffer, count)}")
+            return if (count == buffer.size) buffer else buffer.copyOf(count)
         }
 
         override fun close() = socket.close()
