@@ -36,7 +36,12 @@ class FilesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_files)
-        repository = FileRepository(TerminalSessionHolder.take() ?: run { finish(); return })
+        val session = DeviceSessionHolder.session() ?: run {
+            Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        repository = FileRepository(session)
         findViewById<Button>(R.id.filesBackButton).setOnClickListener { navigateUp() }
         findViewById<Button>(R.id.uploadButton).setOnClickListener {
             picker.launch(arrayOf("*/*"))
@@ -151,7 +156,6 @@ class FilesActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         activeHttpServer?.close()
-        TerminalSessionHolder.store(null)
         super.onDestroy()
     }
 

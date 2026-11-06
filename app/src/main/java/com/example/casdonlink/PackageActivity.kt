@@ -87,7 +87,7 @@ class PackageActivity : AppCompatActivity() {
     private fun runPackage() {
         if (running) return
         val pkg = imported ?: return
-        val session = TerminalSessionHolder.take() ?: run { toast("设备连接已断开"); return }
+        val session = DeviceSessionHolder.session() ?: run { toast("设备连接已断开"); return }
         running = true
         findViewById<Button>(R.id.runPackage).isEnabled = false
         lifecycleScope.launch {
@@ -120,7 +120,6 @@ class PackageActivity : AppCompatActivity() {
             finally {
                 running = false
                 findViewById<Button>(R.id.runPackage).isEnabled = true
-                TerminalSessionHolder.store(session)
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.example.casdonlink.connection
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,6 +24,8 @@ class TelnetClient {
             throw error
         }
         Diagnostics.log("TCP 连接成功，耗时 ${System.currentTimeMillis() - startedAt}ms")
+        // 固定读超时：让读取循环能周期性检查取消与连接状态，而不是永久阻塞。
+        socket.soTimeout = 1_000
         Session(socket)
     }
 
@@ -32,54 +35,126 @@ class TelnetClient {
         private val commandMutex = Mutex()
         private val commandBuffer = StringBuilder()
         @Volatile private var reading = false
+        /** 有页面正在独占消费数据流时，存活探测需要让出读取。 */
+        @Volatile private var busy = false
+        @Volatile private var monitoring = false
+        @Volatile private var peerClosed = false
 
         suspend fun readLoop(onText: (String) -> Unit) = withContext(Dispatchers.IO) {
             reading = true
+            busy = true
             Diagnostics.log("进入持续读取循环")
-            val buffer = ByteArray(4096)
-            val decoder = TelnetDecoder { response -> writeRawBlocking(response) }
-            while (!socket.isClosed) {
-                val count = input.read(buffer)
-                if (count < 0) {
-                    Diagnostics.log("设备关闭了 TCP 连接（读到 EOF）")
-                    break
+            try {
+                val buffer = ByteArray(4096)
+                val decoder = TelnetDecoder { response -> writeRawBlocking(response) }
+                while (!socket.isClosed) {
+                    val count = try {
+                        input.read(buffer)
+                    } catch (_: java.net.SocketTimeoutException) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        continue
+                    }
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    if (count < 0) {
+                        peerClosed = true
+                        Diagnostics.log("设备关闭了 TCP 连接（读到 EOF）")
+                        break
+                    }
+                    Diagnostics.log("持续读取 ${Diagnostics.describe(buffer, count)}")
+                    val text = decoder.decode(buffer, count)
+                    if (text.isNotEmpty()) {
+                        synchronized(commandBuffer) { commandBuffer.append(text) }
+                        onText(text)
+                    }
                 }
-                Diagnostics.log("持续读取 ${Diagnostics.describe(buffer, count)}")
-                val text = decoder.decode(buffer, count)
-                if (text.isNotEmpty()) {
-                    synchronized(commandBuffer) { commandBuffer.append(text) }
-                    onText(text)
-                }
+            } finally {
+                reading = false
+                busy = false
             }
-            reading = false
         }
+
+        /**
+         * 空闲时监控连接状态：设备断开（对端关闭或连接重置）时回调 [onClosed]。
+         * 其他页面正在读写（[busy]）时主动让出 socket，避免抢数据。
+         */
+        suspend fun monitorClosed(onClosed: () -> Unit) = withContext(Dispatchers.IO) {
+            if (monitoring || socket.isClosed) return@withContext
+            monitoring = true
+            val decoder = TelnetDecoder { response -> writeRawBlocking(response) }
+            var closed = false
+            try {
+                while (!socket.isClosed) {
+                    if (busy || reading) {
+                        kotlinx.coroutines.delay(200)
+                        continue
+                    }
+                    val value = try {
+                        input.read()
+                    } catch (_: java.net.SocketTimeoutException) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        continue // 超时说明连接仍然存活
+                    }
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    if (value < 0) {
+                        closed = true
+                        break
+                    }
+                    val text = decoder.decode(byteArrayOf(value.toByte()), 1)
+                    if (text.isNotEmpty()) synchronized(commandBuffer) { commandBuffer.append(text) }
+                }
+                closed = closed || socket.isClosed
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                closed = false
+            } catch (_: Exception) {
+                closed = true
+            } finally {
+                monitoring = false
+            }
+            if (closed) {
+                peerClosed = true
+                Diagnostics.log("检测到设备已断开")
+                onClosed()
+            }
+        }
+
+        /** 连接是否仍然可用（本端未关闭且未检测到对端断开）。 */
+        fun isAlive(): Boolean = !socket.isClosed && !peerClosed
 
         suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
             withContext(Dispatchers.IO) {
-                val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
-                synchronized(commandBuffer) { commandBuffer.clear() }
-                write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
-                val deadline = System.currentTimeMillis() + timeoutMs
-                while (System.currentTimeMillis() < deadline) {
-                if (!reading) {
-                    val buffer = ByteArray(input.available().coerceAtMost(16_384))
-                    if (buffer.isNotEmpty()) {
-                        val count = input.read(buffer)
-                        if (count > 0) synchronized(commandBuffer) { commandBuffer.append(TelnetDecoder { }.decode(buffer, count)) }
+                busy = true
+                try {
+                    val marker = "__CL_DONE_${java.util.UUID.randomUUID().toString().replace("-", "")}__"
+                    synchronized(commandBuffer) { commandBuffer.clear() }
+                    write("$command\nprintf '\\n$marker:%s\\n' \"$?\"\n")
+                    val deadline = System.currentTimeMillis() + timeoutMs
+                    while (System.currentTimeMillis() < deadline) {
+                        if (!reading) {
+                            val buffer = ByteArray(input.available().coerceAtMost(16_384))
+                            if (buffer.isNotEmpty()) {
+                                val count = try {
+                                    input.read(buffer)
+                                } catch (_: java.net.SocketTimeoutException) {
+                                    0
+                                }
+                                if (count > 0) synchronized(commandBuffer) { commandBuffer.append(TelnetDecoder { }.decode(buffer, count)) }
+                            }
+                        }
+                        val current = synchronized(commandBuffer) { commandBuffer.toString() }
+                        val markerIndex = current.indexOf(marker)
+                        if (markerIndex >= 0) {
+                            val body = current.substringBefore(marker).substringAfter(command, "")
+                            val trailer = current.substring(markerIndex + marker.length)
+                            val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
+                            if (code != 0) throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
+                            return@withContext body.trim()
+                        }
+                        kotlinx.coroutines.delay(40)
                     }
+                    throw java.net.SocketTimeoutException("设备命令执行超时")
+                } finally {
+                    busy = false
                 }
-                val current = synchronized(commandBuffer) { commandBuffer.toString() }
-                    val markerIndex = current.indexOf(marker)
-                    if (markerIndex >= 0) {
-                        val body = current.substringBefore(marker).substringAfter(command, "")
-                        val trailer = current.substring(markerIndex + marker.length)
-                        val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
-                        if (code != 0) throw IllegalStateException("命令失败（$code）：${body.trim().takeLast(240)}")
-                        return@withContext body.trim()
-                    }
-                    kotlinx.coroutines.delay(40)
-                }
-                throw java.net.SocketTimeoutException("设备命令执行超时")
             }
         }
 
@@ -120,6 +195,11 @@ class TelnetClient {
         override fun close() = socket.close()
 
         fun isReading(): Boolean = reading
+
+        /** 标记为独占访问，暂停空闲断开检测，避免与其抢读数据。 */
+        internal fun beginExclusive() { busy = true }
+
+        internal fun endExclusive() { busy = false }
     }
 }
 

@@ -3,8 +3,8 @@ package com.example.casdonlink
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -22,13 +22,12 @@ import com.example.casdonlink.connection.NetworkDiagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
-import com.example.casdonlink.device.DeviceRepository
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private val telnetClient = TelnetClient()
     private lateinit var deviceStore: DeviceStore
-    private var activeSession: TelnetClient.Session? = null
+    private var connecting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,29 +59,16 @@ class MainActivity : AppCompatActivity() {
             }
             runNetworkDiagnostics(host, parsePort(findViewById<EditText>(R.id.portInput).text.toString().trim()))
         }
-        findViewById<Button>(R.id.importPackageButton).setOnClickListener {
-            val session = activeSession
-            if (session == null) showMessage("请先连接设备") else {
-                activeSession = null
-                TerminalSessionHolder.store(session)
-                startActivity(android.content.Intent(this, PackageActivity::class.java))
-            }
-        }
-        findViewById<Button>(R.id.filesButton).setOnClickListener {
-            val session = activeSession
-            if (session == null) showMessage("请先连接设备") else {
-                activeSession = null
-                TerminalSessionHolder.store(session)
-                startActivity(android.content.Intent(this, FilesActivity::class.java))
-            }
-        }
-        findViewById<Button>(R.id.terminalButton).setOnClickListener {
-            val session = activeSession
-            if (session == null) showMessage("请先连接设备") else {
-                activeSession = null
-                TerminalSessionHolder.store(session)
-                startActivity(android.content.Intent(this, TerminalActivity::class.java)
-                    .putExtra(TerminalActivity.EXTRA_HOST, findViewById<TextView>(R.id.deviceTitle).text))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从设备页返回（主动断开或设备已断开）时刷新最近设备列表。
+        renderRecentDevices()
+        findViewById<Button>(R.id.connectButton).apply {
+            if (!connecting) {
+                isEnabled = true
+                text = "连接设备"
             }
         }
     }
@@ -100,32 +86,32 @@ class MainActivity : AppCompatActivity() {
         val button = findViewById<Button>(R.id.connectButton)
         button.isEnabled = false
         button.text = "连接中…"
+        connecting = true
         Diagnostics.clear()
         Diagnostics.log("===== 开始连接 $host:$port =====")
         Diagnostics.logNetworkContext()
+        // 清理上一次可能残留的会话，避免连接重叠。
+        if (DeviceSessionHolder.session() != null) DeviceSessionHolder.disconnect()
         lifecycleScope.launch {
+            var session: TelnetClient.Session? = null
             try {
-                activeSession?.close()
-                val session = telnetClient.connect(host, port)
-                activeSession = session
+                session = telnetClient.connect(host, port)
                 // 设备 telnetd 不主动发送 banner，需发送一次 CRLF 唤起 shell 提示符。
                 // 发送 "\n" 由编码器转换成 CRLF；若写成 "\r\n" 会产生 CR CR LF（多一个回车）。
                 session.write("\n")
                 if (!awaitPrompt(session)) throw IllegalStateException("设备未返回 shell 提示符，请确认设备已启动且 Telnet 服务可用")
                 Diagnostics.log("已收到 shell 提示符")
-                val info = DeviceRepository(session).readOverview()
+                // 连接确认可用后交给设备页，首页不再持有会话。
+                DeviceSessionHolder.store(session, host, port)
                 deviceStore.save(DeviceRecord(host, port))
-                findViewById<TextView>(R.id.deviceTitle).text = host
-                findViewById<TextView>(R.id.deviceStatus).text = "${info.system}\n运行时间 · ${info.uptime}\n${info.memory}"
-                findViewById<View>(R.id.devicePanel).visibility = View.VISIBLE
                 renderRecentDevices()
-                showMessage("设备已连接")
+                startActivity(Intent(this@MainActivity, DeviceActivity::class.java))
             } catch (error: Exception) {
                 Diagnostics.log("连接中止：${error.javaClass.simpleName}: ${error.message}")
-                activeSession?.close()
-                activeSession = null
+                runCatching { session?.close() }
                 showDiagnostics(error.message ?: "连接失败", error)
             } finally {
+                connecting = false
                 button.isEnabled = true
                 button.text = "连接设备"
             }
@@ -234,9 +220,4 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-
-    override fun onDestroy() {
-        activeSession?.close()
-        super.onDestroy()
-    }
 }

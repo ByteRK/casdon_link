@@ -10,10 +10,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 class TerminalActivity : AppCompatActivity() {
     private var session: TelnetClient.Session? = null
@@ -28,7 +26,7 @@ class TerminalActivity : AppCompatActivity() {
         input = findViewById(R.id.commandInput)
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
         findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
-        session = TerminalSessionHolder.take() ?: run {
+        session = DeviceSessionHolder.session() ?: run {
             Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -86,7 +84,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) session?.close() else TerminalSessionHolder.store(session)
+        // 会话由 DeviceSessionHolder 统一管理，离开终端页不关闭连接。
+        readerStarted = false
         super.onDestroy()
     }
 
@@ -94,10 +93,4 @@ class TerminalActivity : AppCompatActivity() {
         const val EXTRA_HOST = "host"
         const val MAX_OUTPUT_CHARS = 100_000
     }
-}
-
-internal object TerminalSessionHolder {
-    private var current: TelnetClient.Session? = null
-    @Synchronized fun store(session: TelnetClient.Session?) { current = session }
-    @Synchronized fun take(): TelnetClient.Session? = current.also { current = null }
 }
