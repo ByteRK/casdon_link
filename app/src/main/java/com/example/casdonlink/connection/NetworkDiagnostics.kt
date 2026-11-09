@@ -2,10 +2,10 @@ package com.example.casdonlink.connection
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.net.LinkProperties
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
 
 /**
@@ -25,31 +25,43 @@ object NetworkDiagnostics {
     /** 常见设备服务端口，用于判断设备上到底开了哪些端口。 */
     private val PROBE_PORTS = listOf(23, 2323, 22, 80, 8080, 21)
 
+    /**
+     * 列出本机所有启用的非回环网卡 IPv4 地址。
+     * 用 [java.net.NetworkInterface] 遍历（同步 API）替代已废弃的 [ConnectivityManager.getAllNetworks]；
+     * 网关只对当前默认网络有意义，因此只为该网卡附加网关。
+     */
     fun localEndpoints(context: Context): List<LocalEndpoint> {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return emptyList()
-        val result = mutableListOf<LocalEndpoint>()
-        manager.allNetworks.forEach { network ->
-            val properties: LinkProperties = manager.getLinkProperties(network) ?: return@forEach
-            val gateway = properties.routes
-                .firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }
-                ?.gateway?.hostAddress
-            properties.linkAddresses
-                .map { it.address }
-                .filterIsInstance<Inet4Address>()
-                .filterNot { it.isLoopbackAddress }
-                .forEach { address ->
-                    result.add(
-                        LocalEndpoint(
-                            properties.interfaceName ?: "?",
-                            address.hostAddress ?: "?",
-                            properties.linkAddresses.first { it.address == address }.prefixLength,
-                            gateway
-                        )
-                    )
+        val activeEndpoint = runCatching {
+            manager?.let { connectivity ->
+                connectivity.activeNetwork?.let { network ->
+                    connectivity.getLinkProperties(network)?.let { properties ->
+                        properties.interfaceName to properties.routes
+                            .firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }
+                            ?.gateway?.hostAddress
+                    }
                 }
-        }
-        return result
+            }
+        }.getOrNull()
+
+        return runCatching {
+            NetworkInterface.getNetworkInterfaces()
+                .toList()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { nif ->
+                    nif.interfaceAddresses.mapNotNull { interfaceAddress ->
+                        val address = interfaceAddress.address as? Inet4Address
+                            ?: return@mapNotNull null
+                        if (address.isLoopbackAddress) return@mapNotNull null
+                        LocalEndpoint(
+                            nif.name ?: "?",
+                            address.hostAddress ?: "?",
+                            interfaceAddress.networkPrefixLength.toInt(),
+                            activeEndpoint?.takeIf { it.first == nif.name }?.second
+                        )
+                    }
+                }
+        }.getOrDefault(emptyList())
     }
 
     /** 判断目标 IP 与本机地址是否同网段（按掩码计算网络地址）。 */
