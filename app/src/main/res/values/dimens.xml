@@ -24,6 +24,9 @@
     <!-- 控件尺寸 -->
     <dimen name="control_height">52dp</dimen>
     <dimen name="control_height_small">44dp</dimen>
+    <!-- 终端控制键：比常规按钮矮，一行放下更多按键。 -->
+    <dimen name="control_height_key">40dp</dimen>
+    <dimen name="control_width_key">52dp</dimen>
     <dimen name="control_width_inline">70dp</dimen>
     <dimen name="icon_button_width">52dp</dimen>
     <dimen name="icon_button_height">48dp</dimen>

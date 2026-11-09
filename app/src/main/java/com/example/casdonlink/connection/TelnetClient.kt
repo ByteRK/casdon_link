@@ -95,6 +95,9 @@ class TelnetClient {
          * 此阶段直接读取 socket；握手成功后才会启动后台收集协程。
          */
         internal fun handshake(credentials: Credentials?) {
+            // 提示符正文在握手阶段确定：收集协程启动后不再同步读取 socket，
+            // 否则两边争抢同一份数据，提示符可能被半路截走。
+            var promptLine = ""
             run {
                 // 部分设备会把登录密码回显到终端，先登记以便日志脱敏。
                 credentials?.password?.let { Diagnostics.registerSecret(it) }
@@ -140,6 +143,8 @@ class TelnetClient {
                                 if (sentUsername || sentPassword) "登录成功，已进入 shell"
                                 else "设备无需登录，已进入 shell"
                             )
+                            // 提示符只被握手读取、不经收集协程，这里补进终端流。
+                            promptLine = extractPromptLine(visible)
                             // 局部返回，保证随后仍会启动后台收集协程。
                             return@run
                         }
@@ -149,11 +154,33 @@ class TelnetClient {
             }
             // 握手成功后才启动唯一读取者，此前由握手独占 socket。
             startCollector()
+            publishPrompt(promptLine)
         }
 
         /** 去掉刚刚发送内容在终端上的回显，避免其中的 `#`、`$` 被误判为提示符。 */
         private fun stripEcho(text: String, sent: String): String =
             if (sent.isEmpty()) text else text.replace(sent, "")
+
+        /**
+         * 从握手输出里取出提示符那一行。
+         *
+         * 取最后一条匹配再取它最后一行：匹配可能跨行（banner 和提示符在同一段），
+         * 只保留提示符本身，避免把 `Welcome to ...`、`Password:` 之类的登录过程噪声
+         * 一起搬进终端视图。设备的提示符不一定带路径，这里不猜、也不补造，
+         * 设备没发就没有。
+         */
+        private fun extractPromptLine(text: String): String =
+            SHELL_PROMPT.findAll(text).lastOrNull()?.value
+                ?.substringAfterLast('\n')
+                ?.trimStart()
+                ?.trimEnd()
+                .orEmpty()
+
+        /** 把提示符写进终端流；只补一个空格作为命令回显的间隔，其余保持设备原样。 */
+        private fun publishPrompt(promptLine: String) {
+            if (promptLine.isEmpty()) return
+            publish("$promptLine ")
+        }
 
         /** 阻塞读取并解码，直到 [predicate] 成立或超时。只能在握手阶段调用。 */
         private fun readTextUntil(timeoutMs: Long, predicate: (String) -> Boolean): String {
@@ -389,9 +416,28 @@ class TelnetClient {
             synchronized(this) {
                 Diagnostics.log(
                     if (secret) "发送：（登录凭证已隐藏，${text.length} 字符）"
-                    else "发送：${text.replace("\r", "\\r").replace("\n", "\\n")}"
+                    else "发送：${escapeForLog(text)}"
                 )
                 writeRawBlocking(TelnetEncoder.encode(text))
+            }
+        }
+
+        /**
+         * 把待发送内容转成可读日志。
+         *
+         * 终端的控制键会写入原始控制字符（Ctrl+C = 0x03、Esc = 0x1B），
+         * 直接进日志会变成不可见字符或打乱 logcat 排版，统一转成 `\xNN` 形式。
+         */
+        private fun escapeForLog(text: String): String = buildString(text.length) {
+            text.forEach { char ->
+                when {
+                    char == '\r' -> append("\\r")
+                    char == '\n' -> append("\\n")
+                    char == '\t' -> append("\\t")
+                    char < ' ' || char == '\u007F' ->
+                        append("\\x").append(char.code.toString(16).padStart(2, '0'))
+                    else -> append(char)
+                }
             }
         }
 
@@ -421,7 +467,9 @@ class TelnetClient {
             val LOGIN_PROMPT = Regex("(?im)(?:^|[\\r\\n])[^\\r\\n]{0,40}(?:login|username|user name|user)\\s*[:：]\\s*$")
             val PASSWORD_PROMPT = Regex("(?im)(?:password|passwd)\\s*[:：]\\s*$")
             // '>' 不能是箭头或比较符的一部分，banner 中常出现此类字符。
-            val SHELL_PROMPT = Regex("(?m)(?:^|\\n)[^\\r\\n]{0,120}(?:[#$%]|(?<![=\\-])>)\\s*$")
+            // 终止字符写成 `[#$%]\]?`：`[root@dev /]#` 这类方括号提示符取到 `]#` 为止，
+            // 只取 `#` 前一位会把方括号留下，提示符就残缺了。
+            val SHELL_PROMPT = Regex("(?m)(?:^|\\n)[^\\r\\n]{0,120}(?:[#$%]\\]?|(?<![=\\-])>)\\s*$")
             val AUTH_FAILURE = Regex(
                 "(?i)incorrect|authentication failed|login failed|invalid (?:password|login|user)|" +
                     "permission denied|access denied|too many (?:login|attempts)"

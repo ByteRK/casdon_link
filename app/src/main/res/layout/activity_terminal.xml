@@ -41,6 +41,81 @@
             android:text="" />
     </ScrollView>
 
+    <!--
+        终端控制键：软键盘上的控制字符和部分符号不好输入（中文输入法尤其），
+        单独放一排按键直接发送或插入，可横向滑动以容纳更多按键。
+    -->
+    <HorizontalScrollView
+        android:id="@+id/controlKeyScroll"
+        style="@style/Widget.CasdonLink.KeyRow.Scroll">
+
+        <LinearLayout style="@style/Widget.CasdonLink.KeyRow">
+
+            <Button
+                android:id="@+id/keyEsc"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Esc" />
+
+            <Button
+                android:id="@+id/keyTab"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Tab" />
+
+            <Button
+                android:id="@+id/keyCtrlC"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Ctrl+C" />
+
+            <Button
+                android:id="@+id/keyCtrlD"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Ctrl+D" />
+
+            <Button
+                android:id="@+id/keyCtrlZ"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Ctrl+Z" />
+
+            <Button
+                android:id="@+id/keyCtrlL"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="Ctrl+L" />
+
+            <Button
+                android:id="@+id/keyHistoryPrev"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:contentDescription="上一条命令"
+                android:text="↑" />
+
+            <Button
+                android:id="@+id/keyHistoryNext"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:contentDescription="下一条命令"
+                android:text="↓" />
+
+            <!-- 符号键插入输入框，不立即发送。 -->
+            <Button
+                android:id="@+id/keyPipe"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="|" />
+
+            <Button
+                android:id="@+id/keySlash"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="/" />
+
+            <Button
+                android:id="@+id/keyDash"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="-" />
+
+            <Button
+                android:id="@+id/keyTilde"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:text="~" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -48,6 +123,15 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <!--
+            键盘默认放开：不锁输入类型，用户可以按需切中文输入法。
+            远程调试若只能用 adb 注入文本，拼音输入法可能把字母吞进组合，
+            此时可临时把本控件改成下面两行（明文密码键盘：各输入法都会直接上英文键盘，
+            文本仍可见）：
+                android:imeOptions="actionSend|flagNoExtractUi|flagNoPersonalizedLearning|flagForceAscii"
+                android:inputType="textVisiblePassword"
+            调完务必改回下面这两行，不要提交。
+        -->
         <EditText
             android:id="@+id/commandInput"
             style="@style/Widget.CasdonLink.EditText"

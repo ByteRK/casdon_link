@@ -378,6 +378,45 @@
         <item name="android:layout_width">@dimen/control_width_inline</item>
     </style>
 
+    <!--
+        终端控制键（Esc / Tab / Ctrl+C / 符号键）。
+        focusable=false：点击时不能让输入框失焦，否则软键盘会收起，连续按键就断了。
+        点击依然有效（clickable 不受 focusable 影响）。
+        圆角比常规按钮小（10dp）：按键只有 40dp 高，沿用 14dp 时上下圆角弧线几乎吃掉
+        整个高度，底部看着像被切平；同时显式给 0 内边距、0 最小高度，
+        避免按钮自带 inset 让背景四角看起来不一致。
+    -->
+    <style name="Widget.CasdonLink.Button.Key" parent="Widget.CasdonLink.Button.Secondary">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">@dimen/control_height_key</item>
+        <item name="android:layout_marginEnd">@dimen/space_sm</item>
+        <item name="android:background">@drawable/bg_key</item>
+        <item name="android:focusable">false</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:minWidth">@dimen/control_width_key</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:textSize">@dimen/text_label</item>
+    </style>
+
+    <!-- 终端控制键行（可横向滑动） -->
+    <style name="Widget.CasdonLink.KeyRow.Scroll" parent="Widget.CasdonLink">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">@dimen/space_md</item>
+        <item name="android:scrollbars">none</item>
+    </style>
+
+    <!-- 控制键行的内层横向排列容器 -->
+    <style name="Widget.CasdonLink.KeyRow" parent="Widget.CasdonLink">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
 
     <!-- ==================== 悬浮菜单样式 ==================== -->
 

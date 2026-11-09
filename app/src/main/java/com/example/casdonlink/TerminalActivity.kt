@@ -28,6 +28,10 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var input: EditText
     /** 上一数据块末尾未闭合的 ANSI 转义序列。 */
     private var ansiCarry = ""
+    /** 输入框命令历史，仅在本地回放，不依赖设备端的 readline 状态。 */
+    private val history = ArrayDeque<String>()
+    /** 历史游标，等于 history.size 表示停在最新（空）行。 */
+    private var historyIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,11 +52,73 @@ class TerminalActivity : AppCompatActivity() {
         session = DeviceSessionHolder.session()
         startReader()
         findViewById<Button>(R.id.sendCommandButton).setOnClickListener { sendCommand() }
+        setUpControlKeys()
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
                 sendCommand(); true
             } else false
         }
+    }
+
+    /**
+     * 控制键行。
+     *
+     * 控制字符（Esc、Tab、Ctrl+*）没有可见字符，软键盘打不出来，点击后直接发往设备；
+     * 符号键与历史键只修改本地输入框，不打扰设备。按键在样式里设了 focusable=false，
+     * 点击不会把焦点从输入框抢走，软键盘保持展开。
+     */
+    private fun setUpControlKeys() {
+        bindSendKey(R.id.keyEsc, "\u001B")
+        bindSendKey(R.id.keyTab, "\t")
+        bindSendKey(R.id.keyCtrlC, "\u0003")
+        bindSendKey(R.id.keyCtrlD, "\u0004")
+        bindSendKey(R.id.keyCtrlZ, "\u001A")
+        bindSendKey(R.id.keyCtrlL, "\u000C")
+        bindInsertKey(R.id.keyPipe, "|")
+        bindInsertKey(R.id.keySlash, "/")
+        bindInsertKey(R.id.keyDash, "-")
+        bindInsertKey(R.id.keyTilde, "~")
+        findViewById<Button>(R.id.keyHistoryPrev).setOnClickListener { recallHistory(-1) }
+        findViewById<Button>(R.id.keyHistoryNext).setOnClickListener { recallHistory(+1) }
+    }
+
+    /** 直接向设备发送控制字符（中断、补全、清屏等），不改动输入框内容。 */
+    private fun bindSendKey(id: Int, sequence: String) {
+        findViewById<Button>(id).setOnClickListener {
+            lifecycleScope.launch {
+                try {
+                    session?.write(sequence)
+                } catch (error: Exception) {
+                    Toast.makeText(this@TerminalActivity, error.message ?: "发送失败", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /** 符号键：插入光标处而不是立即发送，由用户补完命令后统一提交。 */
+    private fun bindInsertKey(id: Int, text: String) {
+        findViewById<Button>(id).setOnClickListener { insertIntoInput(text) }
+    }
+
+    private fun insertIntoInput(text: String) {
+        val editable = input.text
+        // 输入框未获得焦点时选区为 -1，按追加到末尾处理。
+        val start = input.selectionStart.takeIf { it >= 0 } ?: editable.length
+        val end = input.selectionEnd.takeIf { it >= 0 } ?: editable.length
+        val from = minOf(start, end)
+        editable.replace(from, maxOf(start, end), text)
+        input.setSelection(from + text.length)
+    }
+
+    /** 回放本地命令历史：[step] 为 -1 上一条、+1 下一条，走到末端回到空行。 */
+    private fun recallHistory(step: Int) {
+        if (history.isEmpty()) return
+        val next = (historyIndex + step).coerceIn(0, history.size)
+        if (next == historyIndex) return
+        historyIndex = next
+        val text = if (next == history.size) "" else history[next]
+        input.setText(text)
+        input.setSelection(text.length)
     }
 
     /**
@@ -74,7 +140,7 @@ class TerminalActivity : AppCompatActivity() {
                 base[3] + bars.bottom
             )
             // 键盘弹出后输出区变矮，保持最新内容可见。
-            view.post { findViewById<ScrollView>(R.id.terminalScroll).fullScroll(ScrollView.FOCUS_DOWN) }
+            scrollToBottom()
             insets
         }
         ViewCompat.requestApplyInsets(root)
@@ -147,11 +213,43 @@ class TerminalActivity : AppCompatActivity() {
         if (command.isEmpty()) return
         lifecycleScope.launch {
             try {
-                session?.write("$command\n")
+                // 首尾空白不进设备：输入法偶尔会在开头留空格，发过去会多出一个回显空格。
+                val payload = command.trim()
+                if (payload.isEmpty()) return@launch
+                session?.write("$payload\n")
                 input.text.clear()
+                rememberCommand(payload)
             } catch (error: Exception) {
                 Toast.makeText(this@TerminalActivity, error.message ?: "发送失败", Toast.LENGTH_SHORT).show()
+            } finally {
+                // 回车/发送后把焦点交还输入框，连续输入时不必重新点击。
+                input.requestFocus()
             }
+        }
+    }
+
+    /** 记录已发送的命令供 ↑/↓ 回放；重复的相邻命令不重复记录。 */
+    private fun rememberCommand(command: String) {
+        if (history.lastOrNull() != command) {
+            history.addLast(command)
+            while (history.size > MAX_HISTORY) history.removeFirst()
+        }
+        historyIndex = history.size
+    }
+
+    /**
+     * 滚动到最新输出。
+     *
+     * 不能用 `ScrollView.fullScroll(FOCUS_DOWN)`：它会向内部可聚焦的视图请求焦点
+     * （输出 TextView 是 textIsSelectable，在 touch mode 下可聚焦），
+     * 输入框因此失焦、软键盘收起，表现为「一弹键盘或一按回车就无法继续输入」。
+     * 这里只改变滚动位置，不触碰焦点。
+     */
+    private fun scrollToBottom() {
+        val scroll = findViewById<ScrollView>(R.id.terminalScroll)
+        scroll.post {
+            val content = scroll.getChildAt(0) ?: return@post
+            scroll.scrollTo(0, content.bottom)
         }
     }
 
@@ -160,9 +258,7 @@ class TerminalActivity : AppCompatActivity() {
         if (clean.isEmpty()) return
         output.append(clean)
         if (output.length() > MAX_OUTPUT_CHARS) output.text = output.text.takeLast(MAX_OUTPUT_CHARS)
-        findViewById<ScrollView>(R.id.terminalScroll).post {
-            findViewById<ScrollView>(R.id.terminalScroll).fullScroll(ScrollView.FOCUS_DOWN)
-        }
+        scrollToBottom()
     }
 
     /**
@@ -234,6 +330,8 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_HOST = "host"
         const val MAX_OUTPUT_CHARS = 100_000
+        /** 本地命令历史最多保留的条数。 */
+        const val MAX_HISTORY = 50
         private const val ESC = '\u001B'
     }
 }
