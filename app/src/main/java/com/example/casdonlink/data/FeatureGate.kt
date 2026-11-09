@@ -12,7 +12,7 @@ import android.content.Context
  */
 object FeatureGate {
     /** 开启完整功能所需密码；需要更换密码时只改这一处。 */
-    const val UNLOCK_PASSWORD = "Casdon2026"
+    const val UNLOCK_PASSWORD = "Abcd+1234"
 
     /** 连续点击标题栏触发开关所需的次数。 */
     const val TAP_COUNT = 6
