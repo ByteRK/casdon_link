@@ -26,7 +26,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class FilesActivity : AppCompatActivity() {
-    private lateinit var repository: FileRepository
     private var path = "/"
     private var files = emptyList<DeviceFile>()
     private var activeHttpServer: PhoneHttpServer? = null
@@ -37,12 +36,11 @@ class FilesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_files)
-        val session = DeviceSessionHolder.session() ?: run {
+        if (!DeviceSessionHolder.hasTarget()) {
             Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        repository = FileRepository(session)
         findViewById<Button>(R.id.filesBackButton).setOnClickListener { navigateUp() }
         findViewById<Button>(R.id.uploadButton).setOnClickListener {
             picker.launch(arrayOf("*/*"))
@@ -63,7 +61,7 @@ class FilesActivity : AppCompatActivity() {
                 path = target
                 findViewById<TextView>(R.id.filesPath).text = path
                 setHint("读取中…")
-                val result = repository.list(path)
+                val result = repository().list(path)
                 files = result
                 findViewById<ListView>(R.id.fileList).adapter = FileAdapter()
                 // 空目录和「命令没有输出」在界面上要能区分，否则只能看到一片空白。
@@ -78,6 +76,14 @@ class FilesActivity : AppCompatActivity() {
             }
         }
     }
+
+    /**
+     * 连接可能在应用退到后台期间被 ROM 中止，每次操作前重新获取可用会话，
+     * 失效时由 [DeviceSessionHolder.ensure] 自动重连。
+     */
+    private suspend fun repository(): FileRepository = FileRepository(
+        DeviceSessionHolder.ensure() ?: error("设备连接已断开")
+    )
 
     /** 顶部提示条同时充当状态与重试入口。 */
     private fun setHint(text: String) {
@@ -96,7 +102,7 @@ class FilesActivity : AppCompatActivity() {
     private fun showFile(file: DeviceFile) {
         lifecycleScope.launch {
             try {
-                val text = repository.readText(file.path)
+                val text = repository().readText(file.path)
                 AlertDialog.Builder(this@FilesActivity).setTitle(file.name)
                     .setMessage(text.take(8_000)).setPositiveButton("关闭", null).show()
             } catch (_: Exception) {
@@ -125,7 +131,7 @@ class FilesActivity : AppCompatActivity() {
                 val newName = field.text.toString().trim()
                 if (newName.isBlank() || newName.contains('/')) { toast("名称无效"); return@setPositiveButton }
                 lifecycleScope.launch {
-                    runCatching { repository.rename(file.path, "$path/$newName") }
+                    runCatching { repository().rename(file.path, "$path/$newName") }
                         .onSuccess { load(path) }.onFailure { toast(it.message ?: "重命名失败") }
                 }
             }.show()
@@ -135,7 +141,7 @@ class FilesActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("删除文件？").setMessage(file.path)
             .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ ->
                 lifecycleScope.launch {
-                    runCatching { repository.delete(file.path) }.onSuccess { load(path) }
+                    runCatching { repository().delete(file.path) }.onSuccess { load(path) }
                         .onFailure { toast(it.message ?: "删除失败") }
                 }
             }.show()
@@ -151,7 +157,7 @@ class FilesActivity : AppCompatActivity() {
                 activeHttpServer = server
                 val host = LocalAddress.find(this@FilesActivity) ?: throw IllegalStateException("无法识别本机局域网地址")
                 val url = server.start(host)
-                repository.uploadFromHttp(url, path.trimEnd('/') + "/" + targetName)
+                repository().uploadFromHttp(url, path.trimEnd('/') + "/" + targetName)
                 toast("传输完成")
                 load(path)
             } catch (error: Exception) { toast(error.message ?: "上传失败") }
@@ -176,7 +182,7 @@ class FilesActivity : AppCompatActivity() {
     private fun download(file: DeviceFile) {
         lifecycleScope.launch {
             try {
-                val bytes = repository.downloadBase64(file.path)
+                val bytes = repository().downloadBase64(file.path)
                 val cache = File(cacheDir, file.name)
                 withContext(Dispatchers.IO) { cache.writeBytes(bytes) }
                 val intent = Intent(Intent.ACTION_SEND).setType("application/octet-stream")

@@ -104,7 +104,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 // connect 内部完成 TCP 建连、Telnet 协商与（必要时）登录，成功后已可执行 shell 命令。
                 session = telnetClient.connect(host, port, credentials = credentials)
-                DeviceSessionHolder.store(session, host, port, usernameText)
+                DeviceSessionHolder.store(session, host, port, usernameText, credentials)
                 deviceStore.save(DeviceRecord(host, port, usernameText))
                 renderRecentDevices()
                 startActivity(Intent(this@MainActivity, DeviceActivity::class.java))

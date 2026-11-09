@@ -21,3 +21,6 @@ Thumbs.db
 # Web tooling, if added to the project later
 node_modules/
 frontend/dist/
+
+# Compiled class files
+patch

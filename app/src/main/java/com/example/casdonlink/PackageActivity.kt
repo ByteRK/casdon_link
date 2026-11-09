@@ -87,13 +87,15 @@ class PackageActivity : AppCompatActivity() {
     private fun runPackage() {
         if (running) return
         val pkg = imported ?: return
-        val session = DeviceSessionHolder.session() ?: run { toast("设备连接已断开"); return }
         running = true
         findViewById<Button>(R.id.runPackage).isEnabled = false
         lifecycleScope.launch {
             try {
-                val files = FileRepository(session)
                 for ((index, step) in pkg.manifest.steps.withIndex()) {
+                    // 选文件时应用会短暂进入后台，部分 ROM 会中止原连接；每步执行前确认会话可用。
+                    val session = DeviceSessionHolder.ensure()
+                        ?: throw IllegalStateException("设备连接已断开")
+                    val files = FileRepository(session)
                     states[index] = "执行中"; renderSteps()
                     try {
                         when (step) {

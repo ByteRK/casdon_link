@@ -22,6 +22,8 @@ class TerminalActivity : AppCompatActivity() {
     private var session: TelnetClient.Session? = null
     private var subscription: AutoCloseable? = null
     private var monitorJob: Job? = null
+    /** 重连进行中，避免掉线回调与前台恢复重复触发。 */
+    private var recovering = false
     private lateinit var output: TextView
     private lateinit var input: EditText
     /** 上一数据块末尾未闭合的 ANSI 转义序列。 */
@@ -36,11 +38,12 @@ class TerminalActivity : AppCompatActivity() {
         input = findViewById(R.id.commandInput)
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
         findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
-        session = DeviceSessionHolder.session() ?: run {
+        if (!DeviceSessionHolder.hasTarget()) {
             Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
+        session = DeviceSessionHolder.session()
         startReader()
         findViewById<Button>(R.id.sendCommandButton).setOnClickListener { sendCommand() }
         input.setOnEditorActionListener { _, actionId, _ ->
@@ -91,25 +94,49 @@ class TerminalActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::output.isInitialized) {
+        if (!::output.isInitialized) return
+        val active = session
+        if (active != null && active.isAlive()) {
             startReader()
             startMonitor()
+            return
+        }
+        // 后台期间连接可能被 ROM 中止，回到前台先尝试恢复再继续使用终端。
+        recoverSession()
+    }
+
+    /** 重连成功后重新订阅输出与掉线监听；失败则关闭页面。 */
+    private fun recoverSession() {
+        if (recovering) return
+        recovering = true
+        lifecycleScope.launch {
+            try {
+                val restored = DeviceSessionHolder.ensure()
+                if (restored == null) {
+                    if (!isFinishing && !isDestroyed) {
+                        Toast.makeText(this@TerminalActivity, "设备连接已断开", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                    return@launch
+                }
+                stopReader()
+                monitorJob?.cancel()
+                session = restored
+                findViewById<TextView>(R.id.connectionState).text = "连接已恢复"
+                startReader()
+                startMonitor()
+            } finally {
+                recovering = false
+            }
         }
     }
 
-    /** 设备掉线时关闭终端页，回到首页（设备页也会同步退出）。 */
+    /** 设备掉线时先尝试重连，仍失败才关闭终端页并回到首页。 */
     private fun startMonitor() {
         if (monitorJob?.isActive == true) return
         val active = session ?: return
         monitorJob = lifecycleScope.launch {
-            active.monitorClosed {
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    findViewById<TextView>(R.id.connectionState).text = "已断开"
-                    Toast.makeText(this@TerminalActivity, "设备连接已断开", Toast.LENGTH_SHORT).show()
-                    finish()
-                }
-            }
+            active.monitorClosed { recoverSession() }
         }
     }
 
