@@ -54,6 +54,11 @@ class TelnetClient {
         val session = Session(socket)
         try {
             session.handshake(credentials)
+            // 部分设备的 pty 开着 tab3（OXTABS），会把输出里的 TAB 展开成空格，
+            // 使「类型 \t 大小 \t 名称」的结构化列目录无法解析。这里只做尽力而为的关闭，
+            // 失败时由 FileRepository 的空格分隔兼容解析兼底。
+            runCatching { session.execute("stty tab0 2>/dev/null", timeoutMs = 3_000) }
+                .onFailure { Diagnostics.log("关闭终端 tab 展开失败，将兼容空格分隔输出：${it.message}") }
         } catch (error: Exception) {
             Diagnostics.log("握手失败：${error.javaClass.simpleName}: ${error.message}")
             runCatching { session.close() }
@@ -205,13 +210,17 @@ class TelnetClient {
                             val text = decoder.decode(buffer, count)
                             if (text.isEmpty()) continue
                             // 终端是持续流，逐包写日志会冲掉环形缓冲，这里按 1 秒聚合一次。
-                            loggedBytes += count
-                            lastPreview = Diagnostics.describe(buffer, count, 120)
-                            val now = System.currentTimeMillis()
-                            if (now - lastLogAt >= 1_000) {
-                                Diagnostics.log("收到 $loggedBytes 字节，最近：$lastPreview")
-                                loggedBytes = 0
-                                lastLogAt = now
+                            // 受控命令进行中收到的是命令回显（含 readline 重绘的孤立 CR），
+                            // 记录它只会把诊断日志刷成噪声；真正的输出由 execute 自己处理。
+                            if (!terminalSuppressed) {
+                                loggedBytes += count
+                                lastPreview = Diagnostics.describe(buffer, count, 120)
+                                val now = System.currentTimeMillis()
+                                if (now - lastLogAt >= 1_000) {
+                                    Diagnostics.log("收到 $loggedBytes 字节，最近：$lastPreview")
+                                    loggedBytes = 0
+                                    lastLogAt = now
+                                }
                             }
                             publish(text)
                         }
@@ -255,9 +264,14 @@ class TelnetClient {
             closedSignal.complete(Unit)
         }
 
-        /** 设备输出可能混用 CRLF 与单独 CR，统一成 LF 便于按行解析。 */
+        /**
+         * 统一换行为 LF。
+         *
+         * 孤立 CR 直接丢弃而**不**转成换行：交互式 shell 的回显会在超过屏幕宽度处插入
+         * 用于重绘的孤立 CR，若当成换行会把一条命令或一行文件列表劈成两半。
+         */
         private fun normalizeNewlines(text: String): String =
-            text.replace("\r\n", "\n").replace('\r', '\n')
+            text.replace("\r\n", "\n").replace("\r", "")
 
         /**
          * 订阅终端字节流。返回对象用于解除订阅；解除后输出重新进入回放缓冲，
@@ -330,10 +344,14 @@ class TelnetClient {
                         if (!isAlive()) throw IllegalStateException("设备连接已断开")
                         kotlinx.coroutines.delay(20)
                     }
-                    // 记录设备实际回显，便于判断是命令没执行还是标记被吞掉。
-                    val captured = normalizeNewlines(
+                    // 记录设备实际输出，便于判断是命令没执行还是标记被吞掉。
+                    // 起始标记之前是命令回显，没有诊断价值，只保留其后的部分。
+                    val raw = normalizeNewlines(
                         synchronized(lock) { commandBuffer.toString() }
-                    ).take(400)
+                    )
+                    val echoed = raw.lastIndexOf(beginMarker)
+                    val captured = (if (echoed >= 0) raw.substring(echoed + beginMarker.length) else raw)
+                        .take(400)
                     Diagnostics.log("命令超时，已捕获输出：${captured.ifBlank { "（空）" }}")
                     throw java.net.SocketTimeoutException("设备命令执行超时")
                 } finally {

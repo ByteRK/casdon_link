@@ -44,18 +44,32 @@ class FileRepository(private val session: TelnetClient.Session) {
         if (output.isBlank()) Diagnostics.log("结构化列目录输出为空：$path")
         return output.lineSequence()
             .map { ANSI_ESCAPE.replace(it, "") }
-            .mapNotNull { line ->
-                val fields = line.split('\t', limit = 3)
-                if (fields.size < 3 || fields[2].isEmpty()) null
-                else DeviceFile(
-                    name = fields[2],
-                    path = childPath(path, fields[2]),
-                    directory = fields[0] == "d",
-                    size = fields[1].toLongOrNull() ?: 0
-                )
-            }
+            .mapNotNull { line -> parseRecord(line, path) }
             .sortedWith(FILE_ORDER)
             .toList()
+    }
+
+    /**
+     * 解析一行 `类型 \t 大小 \t 名称`。
+     *
+     * 若设备未能关闭 pty 的 tab 展开（OXTABS 会把 TAB 换成空格）或自行改造了输出，
+     * 则退回按空白分隔解析，避免整份列表被当作空结果而不得不降级。
+     */
+    private fun parseRecord(line: String, parent: String): DeviceFile? {
+        val fields = line.split('\t', limit = 3)
+        val parsed = if (fields.size >= 3 && fields[2].isNotEmpty()) {
+            Triple(fields[0], fields[1], fields[2])
+        } else {
+            val match = SPACE_SEPARATED_RECORD.find(line) ?: return null
+            Triple(match.groupValues[1], match.groupValues[2], match.groupValues[3])
+        }
+        if (parsed.first != "d" && parsed.first != "f") return null
+        return DeviceFile(
+            name = parsed.third,
+            path = childPath(parent, parsed.third),
+            directory = parsed.first == "d",
+            size = parsed.second.toLongOrNull() ?: 0
+        )
     }
 
     /** 回退方案：只用 `ls`，不依赖 stat/printf，几乎在所有 BusyBox/完整发行版上都可用。 */
@@ -148,6 +162,8 @@ class FileRepository(private val session: TelnetClient.Session) {
         const val UPLOAD_TIMEOUT_MS = 120_000L
         /** 去掉颜色、光标控制等 ANSI 序列，避免干扰按行解析。 */
         val ANSI_ESCAPE = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
+        /** TAB 被展开成空格时的兼容格式：`类型 + 空白 + 大小 + 空白 + 名称`。 */
+        val SPACE_SEPARATED_RECORD = Regex("^([df])\\s+(\\d+)\\s+(.+)$")
         /** 目录优先，同级按名称排序。 */
         val FILE_ORDER = compareByDescending<DeviceFile> { it.directory }.thenBy { it.name.lowercase() }
     }
