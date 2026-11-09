@@ -5,15 +5,10 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- 设备记录含加密后的登录密码，且密码密钥无法迁移，不随备份带出。 -->
+        <exclude domain="sharedpref" path="devices.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="devices.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

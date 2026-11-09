@@ -87,9 +87,13 @@ class MainActivity : AppCompatActivity() {
             showMessage("端口需为 1-65535 之间的整数")
             return
         }
+        // 输入框留空时复用该地址已保存的登录信息；手动填写的值优先。
+        val remembered = deviceStore.find(host, port)
+        val loginName = usernameText.ifBlank { remembered?.username.orEmpty() }
+        val loginPassword = passwordText.ifEmpty { remembered?.password.orEmpty() }
         // 用户名/密码都为空表示设备无需登录；只填密码时用户名按常见设备默认值 root 处理。
-        val credentials = if (usernameText.isBlank() && passwordText.isEmpty()) null
-        else TelnetClient.Credentials(usernameText.ifBlank { "root" }, passwordText)
+        val credentials = if (loginName.isBlank() && loginPassword.isEmpty()) null
+        else TelnetClient.Credentials(loginName.ifBlank { "root" }, loginPassword)
         val button = findViewById<Button>(R.id.connectButton)
         button.isEnabled = false
         button.text = "连接中…"
@@ -104,8 +108,9 @@ class MainActivity : AppCompatActivity() {
             try {
                 // connect 内部完成 TCP 建连、Telnet 协商与（必要时）登录，成功后已可执行 shell 命令。
                 session = telnetClient.connect(host, port, credentials = credentials)
-                DeviceSessionHolder.store(session, host, port, usernameText, credentials)
-                deviceStore.save(DeviceRecord(host, port, usernameText))
+                DeviceSessionHolder.store(session, host, port, loginName, credentials)
+                // 保存实际生效的凭证（可能是从记录里复用的），否则自动登录会被清掉。
+                deviceStore.save(DeviceRecord(host, port, loginName, loginPassword))
                 renderRecentDevices()
                 startActivity(Intent(this@MainActivity, DeviceActivity::class.java))
             } catch (error: Exception) {
@@ -195,8 +200,9 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         deviceStore.getAll().forEach { record ->
             val displayName = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
+            val loginHint = if (record.hasPassword) "  ·  已保存密码" else ""
             val row = TextView(this).apply {
-                text = "$displayName  ·  Telnet ${record.port}"
+                text = "$displayName  ·  Telnet ${record.port}$loginHint"
                 textSize = 14f
                 setTextColor(getColor(R.color.text_primary))
                 setPadding(18, 20, 18, 20)
@@ -207,13 +213,39 @@ class MainActivity : AppCompatActivity() {
                     ipInput.setText(record.ipAddress)
                     portInput.setText(record.port.toString())
                     usernameInput.setText(record.username)
-                    passwordInput.setText("")
-                    connect(record.ipAddress, record.port.toString(), record.username)
+                    passwordInput.setText(record.password)
+                    connect(record.ipAddress, record.port.toString(), record.username, record.password)
+                }
+                setOnLongClickListener {
+                    showRecordActions(record)
+                    true
                 }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 }
             )
         }
+    }
+
+    /** 长按最近设备：清除已保存密码或删除整条记录。 */
+    private fun showRecordActions(record: DeviceRecord) {
+        val label = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
+        val actions = buildList {
+            if (record.hasPassword) add("清除已保存密码")
+            add("删除记录")
+        }
+        AlertDialog.Builder(this).setTitle(label).setItems(actions.toTypedArray()) { _, which ->
+            when (actions[which]) {
+                "清除已保存密码" -> {
+                    deviceStore.save(record.copy(password = ""))
+                    showMessage("已清除保存的密码")
+                }
+                "删除记录" -> {
+                    deviceStore.remove(record.ipAddress, record.port)
+                    showMessage("已删除记录")
+                }
+            }
+            renderRecentDevices()
+        }.show()
     }
 
     private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

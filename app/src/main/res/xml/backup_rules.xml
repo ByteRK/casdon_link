@@ -6,8 +6,6 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- 设备记录含加密后的登录密码，且密码密钥无法迁移，不随备份带出。 -->
+    <exclude domain="sharedpref" path="devices.xml" />
 </full-backup-content>
