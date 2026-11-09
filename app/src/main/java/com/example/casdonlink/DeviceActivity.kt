@@ -6,7 +6,6 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -14,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.device.DeviceRepository
+import com.example.casdonlink.ui.applyDarkSystemBars
 import kotlinx.coroutines.launch
 
 /**
@@ -28,7 +28,7 @@ class DeviceActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        applyDarkSystemBars()
         setContentView(R.layout.activity_device)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.deviceRoot)) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

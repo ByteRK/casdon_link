@@ -129,6 +129,8 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 
 界面视觉参数集中在 `res/values/colors.xml`、`res/values/dimens.xml`、`res/values/styles.xml` 三处，布局文件只引用样式和令牌，不写裸字号、颜色、圆角与内边距。
 
+系统栏：页面创建时必须调用 `ui/SystemBars.kt` 的 `applyDarkSystemBars()`，不要直接调用 `enableEdgeToEdge()`。后者默认的 `SystemBarStyle.auto` 按**系统**深色/浅色模式决定图标深浅，在系统浅色模式下会给深色图标，落在 `@color/background` 上就看不见；本应用背景始终为深色，因此固定用 `SystemBarStyle.dark`（透明底 + 浅色图标），与主题里的 `windowLightStatusBar`/`windowLightNavigationBar` = false 一致。
+
 - `colors.xml`：只放语义色（`background`、`surface`、`primary`、`secondary`、`text_primary`、`text_secondary`、`text_hint`、`danger`、`divider`、`input_surface`、`input_stroke`、`card_stroke`）。新增颜色先判断能否复用已有语义色。
 - `dimens.xml`：`space_*` 为 4dp 栅格间距；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
 - `styles.xml`：`Text.*` 只描述文字（字号、颜色、字重、行距），`Widget.*` 描述完整控件（尺寸、背景、内边距、文字）。常用项：
@@ -136,8 +138,35 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
   - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。
   - 按钮：`Button.Primary`（主操作）、`Button.Secondary`（次操作）、`Button.Small`（小号次操作）、`Button.Danger`（危险操作）、`Button.Icon`（返回符号）、`Button.Inline`（行内固定宽度）。
   - 输入：`EditText`、`EditText.Port`。
+- 启动图标：全部为矢量，项目已不含位图图标。
+  - 背景：`ic_launcher_background` 用设计稿原色 `@color/ic_launcher_background`（`#3F70FF`），不跟随应用深色背景。
+  - 前景：符号来自设计稿 `API.svg`，1024 画布内实测 640×640、居中（占 62.5%）。自适应图标只显示中间 66.7%，直接铺满会让符号相对可见区放大到约 94%，因此 `ic_launcher_foreground_inset` 用 `inset="16.67%"` 内缩，使符号在可见区中仍占约 62.5%，与设计稿一致。
+  - `mipmap-anydpi-v26/ic_launcher{,_round}.xml` 为 adaptive-icon（background + foreground + monochrome，monochrome 与前景区用同一份资源）；API 24–25 回退到 `mipmap-anydpi/ic_launcher{,_round}.xml`（`layer-list` + `ic_launcher_legacy_background{,_round}` 圆角/圆形底色，前景用未内缩的 `ic_launcher_foreground`，因为 layer-list 不受 66.7% 裁切限制）。
   - 弹窗：统一用 `MaterialAlertDialogBuilder`，主题为 `ThemeOverlay.CasdonLink.MaterialAlertDialog`（深色表面、20dp 圆角、语义文字色）；输入类弹窗内容用 `dialog_input.xml`，长文本用 `dialog_text.xml`。
   - 悬浮菜单：主题为 `ThemeOverlay.CasdonLink.PopupMenu`，控件样式为 `Widget.CasdonLink.PopupMenu`，背景 `bg_popup_menu` 与卡片同色同描边。
 
 新建页面的做法：根布局用 `Widget.CasdonLink.Screen.*`，标题栏用 `Widget.CasdonLink.Toolbar`，卡片用 `Card`，按钮只从上述按钮样式里选。需要局部差异时在布局中写少量覆盖属性，跨页面复用的差异则新增子样式（例如 `Button.Secondary.Wide`），不要在多个布局里重复同一组属性。列表行统一使用独立 `row_*.xml`，代码只负责绑定数据和事件，不得在 Kotlin 中拼装样式。弹窗与菜单也必须走上述主题，不要直接使用 `android.app.AlertDialog` 或默认 `PopupMenu`，否则会跟随系统浅色主题而与页面割裂。
+
+列表控件统一使用 `RecyclerView`：
+
+- 整页列表（文件页、修复步骤页）在布局里用 `style="@style/Widget.CasdonLink.List"`，代码里调用 `ui/ListSetup.kt` 的 `configureAsList()` 完成纵向布局与 1dp 分隔线（`divider_list`）；RecyclerView 不读 `android:divider`，分隔线必须由 `DividerItemDecoration` 提供。
+- 适配器统一用 `ListAdapter` + `DiffUtil`，行视图放独立 `row_*.xml`，Holder 只绑数据并把点击/长按转发给 Activity 回调；行按下反馈由 `Widget.CasdonLink.ListRow` 的 `selectableItemBackground` 提供。
+- 嵌在其他可滚动页面里的列表（首页「最近设备」）外层用 `androidx.core.widget.NestedScrollView`，条目超过 3 行时把列表高度固定为 `RECENT_VISIBLE_ROWS × (recent_device_row_height + space_md)` 并在列表内滚动，未超过时用 `wrap_content`，避免记录累积把首页撑长；无记录时整块（标题 + 列表）隐藏。
+
+## 11. 版本号规范
+
+版本号采用 `MAJOR.MINOR.PATCH` 三段式，**每一次改动都必须递增其中一位**，不允许出现「代码变了但版本号没变」的提交。
+
+递增规则（取本次改动中最高的那一类）：
+
+| 段 | 触发条件 | 示例 |
+| --- | --- | --- |
+| `MAJOR` | 不兼容变更：修复包清单格式不兼容、已保存数据的结构/加密方式变化、需要用户重新配置或迁移、整体重写 | `1.x.x` → `2.0.0` |
+| `MINOR` | 新增功能或新交互，且对已有数据和用法保持兼容：新增页面、新增能力、列表/弹窗行为变化 | `1.1.x` → `1.2.0` |
+| `PATCH` | 行为不变的改动：缺陷修复、样式与文案调整、纯重构、文档与构建脚本调整 | `1.1.0` → `1.1.1` |
+
+- 递增某一位时，右侧低位归零（`1.1.3` 升 MINOR → `1.2.0`）。
+- 一次提交（或一批改动）只递增一次，按其中最高级别计；例如同时修 bug 和加功能，走 `MINOR`。
+- 版本号只在 `app/build.gradle.kts` 顶部维护：`appMajor`/`appMinor`/`appPatch` 三个常量，`versionName` 与 `versionCode` 都由它们派生（`versionCode = MAJOR*10000 + MINOR*100 + PATCH`），不要直接写 `versionName` 字符串。这样首页页脚、APK 产物名（`CasdonLink_<buildType>_V<版本名>_<时间戳>.apk`）会同步更新。
+- 首个三段式基线为 `1.1.0`：`1.0` 时代的两位版本号补齐为三段，并把在此之后累计的新功能（最近设备列表、首页页脚、系统栏修复等）计入 `MINOR`。
 

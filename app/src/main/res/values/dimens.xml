@@ -31,6 +31,8 @@
     <dimen name="port_field_width">92dp</dimen>
     <dimen name="toolbar_height">56dp</dimen>
     <dimen name="list_row_height">64dp</dimen>
+    <!-- 最近设备行：固定高度 + 单行文本，便于按行数限制列表可视高度。 -->
+    <dimen name="recent_device_row_height">56dp</dimen>
 
     <!-- 字号 -->
     <dimen name="text_caption">12sp</dimen>

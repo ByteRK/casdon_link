@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标专用的前景包裹：自适应图标只显示中间 66.7%（72dp / 108dp），
+    若直接铺满，符号相对可见区会占到约 94%，比原设计稿明显偏大。
+    这里整体内缩 16.67%（每边），符号落到可见区的约 62.5%，与 API.svg 原始比例一致。
+    API 24–25 的 layer-list 回退不用这层，直接用未缩放的 ic_launcher_foreground。
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_foreground"
+    android:inset="16.67%" />

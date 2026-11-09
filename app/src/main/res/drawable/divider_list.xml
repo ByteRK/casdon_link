@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 列表分隔线：RecyclerView 的 DividerItemDecoration 需要带固有高度的 Drawable，颜色取 divider 语义色。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <size android:height="1dp" />
+    <solid android:color="@color/divider" />
+</shape>

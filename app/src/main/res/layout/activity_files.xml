@@ -38,11 +38,10 @@
             android:layout_marginTop="10dp"
             android:text="长按文件可操作" />
 
-        <ListView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/fileList"
             style="@style/Widget.CasdonLink.List"
             android:layout_marginTop="10dp"
-            android:clipToPadding="false"
             android:paddingBottom="88dp" />
     </LinearLayout>
 

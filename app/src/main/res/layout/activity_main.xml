@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 根节点用 NestedScrollView，使内嵌的最近设备列表能与页面滚动正确交接。 -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     style="@style/Widget.CasdonLink.Screen.Scroll"
@@ -95,13 +96,22 @@
             android:layout_marginTop="@dimen/space_3xl"
             android:text="最近设备" />
 
-        <LinearLayout
+        <!-- 高度由代码按行数计算：条目少于可视行数时自适应，超过后固定高度并在列表内滚动。 -->
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recentDevices"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_md"
-            android:orientation="vertical" />
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="true"
+            android:overScrollMode="ifContentScrolls"
+            android:scrollbars="vertical" />
+
+        <!-- 版本与版权声明：文本在 MainActivity 中按 BuildConfig 组装，样式由 Text.CasdonLink.Footer 维护。 -->
+        <TextView
+            android:id="@+id/aboutInfo"
+            style="@style/Text.CasdonLink.Footer"
+            android:layout_marginTop="@dimen/space_3xl" />
 
     </LinearLayout>
-</ScrollView>
-
+</androidx.core.widget.NestedScrollView>

@@ -5,21 +5,23 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.BaseAdapter
 import android.widget.Button
-import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import com.example.casdonlink.files.PhoneHttpServer
 import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.packages.PackageImporter
 import com.example.casdonlink.packages.RepairStep
+import com.example.casdonlink.ui.applyDarkSystemBars
+import com.example.casdonlink.ui.configureAsList
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,12 +35,14 @@ class PackageActivity : AppCompatActivity() {
     private var imported: PackageImporter.ImportedPackage? = null
     private var running = false
     private val states = mutableListOf<String>()
+    private lateinit var stepAdapter: StepAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        applyDarkSystemBars()
         setContentView(R.layout.activity_package)
         applySystemBarInsets()
+        setUpStepList()
         findViewById<Button>(R.id.packageBack).setOnClickListener { finish() }
         findViewById<Button>(R.id.runPackage).setOnClickListener { confirmRun() }
         picker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
@@ -64,6 +68,13 @@ class PackageActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(root)
     }
 
+    private fun setUpStepList() {
+        val list = findViewById<RecyclerView>(R.id.stepList)
+        list.configureAsList()
+        stepAdapter = StepAdapter()
+        list.adapter = stepAdapter
+    }
+
     private fun importPackage(uri: android.net.Uri) {
         lifecycleScope.launch {
             try {
@@ -77,25 +88,50 @@ class PackageActivity : AppCompatActivity() {
         }
     }
 
+    /** 状态变化时整份重新提交，DiffUtil 会把更新定位到具体行，不重建整个列表。 */
     private fun renderSteps() {
         val result = imported ?: return
-        findViewById<ListView>(R.id.stepList).adapter = object : BaseAdapter() {
-            override fun getCount() = result.manifest.steps.size
-            override fun getItem(position: Int) = result.manifest.steps[position]
-            override fun getItemId(position: Int) = position.toLong()
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val view = convertView ?: LayoutInflater.from(this@PackageActivity).inflate(R.layout.row_step, parent, false)
-                val step = getItem(position)
-                view.findViewById<TextView>(R.id.stepName).text = "${position + 1}. ${step.name}"
-                val detail = when (step) {
+        stepAdapter.submitList(
+            result.manifest.steps.mapIndexed { index, step ->
+                StepRow(index, step, states.getOrElse(index) { "待执行" })
+            }
+        )
+        findViewById<TextView>(R.id.packageProgress).text = "${result.manifest.steps.size} 步"
+    }
+
+    /** 修复步骤行：序号、步骤内容与当前执行状态。 */
+    private data class StepRow(val index: Int, val step: RepairStep, val state: String)
+
+    private class StepAdapter : ListAdapter<StepRow, StepAdapter.Holder>(StepDiff) {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.row_step, parent, false)
+            return Holder(view)
+        }
+
+        override fun onBindViewHolder(holder: Holder, position: Int) = holder.bind(getItem(position))
+
+        class Holder(view: View) : RecyclerView.ViewHolder(view) {
+            private val name = view.findViewById<TextView>(R.id.stepName)
+            private val detail = view.findViewById<TextView>(R.id.stepDetail)
+
+            fun bind(row: StepRow) {
+                name.text = "${row.index + 1}. ${row.step.name}"
+                val detailText = when (val step = row.step) {
                     is RepairStep.File -> "传输 ${step.source} → ${step.target}"
                     is RepairStep.Shell -> "命令 · ${step.command}"
                 }
-                view.findViewById<TextView>(R.id.stepDetail).text = "${states[position]} · $detail"
-                return view
+                detail.text = "${row.state} · $detailText"
             }
         }
-        findViewById<TextView>(R.id.packageProgress).text = "${result.manifest.steps.size} 步"
+
+        private object StepDiff : DiffUtil.ItemCallback<StepRow>() {
+            override fun areItemsTheSame(oldItem: StepRow, newItem: StepRow): Boolean =
+                oldItem.index == newItem.index && oldItem.step.id == newItem.step.id
+
+            override fun areContentsTheSame(oldItem: StepRow, newItem: StepRow): Boolean =
+                oldItem == newItem
+        }
     }
 
     private fun confirmRun() {

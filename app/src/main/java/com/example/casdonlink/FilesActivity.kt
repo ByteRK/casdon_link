@@ -6,10 +6,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -17,16 +15,20 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.PopupMenu
-import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.files.DeviceFile
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.files.PhoneHttpServer
 import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.formatByteSize
+import com.example.casdonlink.ui.applyDarkSystemBars
+import com.example.casdonlink.ui.configureAsList
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ import java.io.File
 class FilesActivity : AppCompatActivity() {
     private var path = "/"
     private var files = emptyList<DeviceFile>()
+    private lateinit var fileAdapter: FileAdapter
     private var activeHttpServer: PhoneHttpServer? = null
     private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) upload(uri)
@@ -43,7 +46,7 @@ class FilesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        applyDarkSystemBars()
         setContentView(R.layout.activity_files)
         applySystemBarInsets()
         if (!DeviceSessionHolder.hasTarget()) {
@@ -57,18 +60,27 @@ class FilesActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.filesPath).setOnClickListener { showLocationMenu() }
         // 上传、新建文件/文件夹、退出都收进右下角浮空按钮，顶部只保留导航。
         findViewById<View>(R.id.filesFab).setOnClickListener { showActionMenu(it) }
-        findViewById<ListView>(R.id.fileList).setOnItemClickListener { _, _, position, _ ->
-            if (isParentRow(position)) { navigateUp(); return@setOnItemClickListener }
-            val file = fileAt(position) ?: return@setOnItemClickListener
-            if (file.directory) load(file.path) else showFile(file)
-        }
-        findViewById<ListView>(R.id.fileList).setOnItemLongClickListener { _, _, position, _ ->
-            // 「..」是导航项，不参与重命名/删除/下载。
-            if (isParentRow(position)) return@setOnItemLongClickListener true
-            fileAt(position)?.let(::showActions)
-            true
-        }
+        setUpFileList()
         load(path)
+    }
+
+    /** 列表只负责展示与事件转发，点击/长按的具体行为留在 Activity。 */
+    private fun setUpFileList() {
+        val list = findViewById<RecyclerView>(R.id.fileList)
+        list.configureAsList()
+        fileAdapter = FileAdapter(
+            onOpen = { row ->
+                when (row) {
+                    FileRow.Parent -> navigateUp()
+                    is FileRow.Entry -> if (row.file.directory) load(row.file.path) else showFile(row.file)
+                }
+            },
+            onLongPress = { row ->
+                // 「..」是导航项，不参与重命名/删除/下载。
+                if (row is FileRow.Entry) showActions(row.file)
+            }
+        )
+        list.adapter = fileAdapter
     }
 
     /**
@@ -99,7 +111,7 @@ class FilesActivity : AppCompatActivity() {
                 setHint("读取中…")
                 val result = repository().list(path)
                 files = result
-                findViewById<ListView>(R.id.fileList).adapter = FileAdapter()
+                renderFiles()
                 // 空目录和「命令没有输出」在界面上要能区分，否则只能看到一片空白。
                 setHint(
                     when {
@@ -110,7 +122,7 @@ class FilesActivity : AppCompatActivity() {
                 )
             } catch (error: Exception) {
                 files = emptyList()
-                findViewById<ListView>(R.id.fileList).adapter = FileAdapter()
+                renderFiles()
                 val reason = error.message ?: error.javaClass.simpleName
                 Diagnostics.log("列目录失败（$path）：$reason")
                 setHint("读取失败：$reason\n点击重试")
@@ -138,12 +150,14 @@ class FilesActivity : AppCompatActivity() {
     /** 非根目录时列表首行显示「..」导航项。 */
     private val hasParent: Boolean get() = path.trimEnd('/').isNotEmpty()
 
-    /** 当前位置的列表首行是否为「..」导航项。 */
-    private fun isParentRow(position: Int): Boolean = hasParent && position == 0
-
-    /** 列表位置映射到实际文件条目，自动跳过首行的「..」。 */
-    private fun fileAt(position: Int): DeviceFile? =
-        files.getOrNull(if (hasParent) position - 1 else position)
+    /** 把当前目录内容（含首行「..」）交给列表，由 DiffUtil 计算最小更新量。 */
+    private fun renderFiles() {
+        val rows = buildList {
+            if (hasParent) add(FileRow.Parent)
+            files.forEach { add(FileRow.Entry(it)) }
+        }
+        fileAdapter.submitList(rows)
+    }
 
     private fun navigateUp() {
         if (!hasParent) return
@@ -392,29 +406,59 @@ class FilesActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private inner class FileAdapter : BaseAdapter() {
-        /** 首行的「..」使所有位置偏移 1。 */
-        private val offset = if (hasParent) 1 else 0
+    private inner class FileAdapter(
+        private val onOpen: (FileRow) -> Unit,
+        private val onLongPress: (FileRow) -> Unit
+    ) : ListAdapter<FileRow, FileAdapter.Holder>(RowDiff) {
 
-        override fun getCount() = files.size + offset
-        override fun getItem(position: Int) = files[position - offset]
-        override fun getItemId(position: Int) = position.toLong()
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val view = convertView ?: LayoutInflater.from(this@FilesActivity).inflate(R.layout.row_file, parent, false)
-            val icon = view.findViewById<TextView>(R.id.fileIcon)
-            val name = view.findViewById<TextView>(R.id.fileName)
-            val meta = view.findViewById<TextView>(R.id.fileMeta)
-            if (isParentRow(position)) {
-                icon.text = "↰"
-                name.text = ".."
-                meta.text = "返回上一层"
-                return view
-            }
-            val file = getItem(position)
-            icon.text = if (file.directory) "⌂" else "·"
-            name.text = file.name
-            meta.text = if (file.directory) "文件夹" else formatByteSize(file.size)
-            return view
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.row_file, parent, false)
+            return Holder(view)
         }
+
+        override fun onBindViewHolder(holder: Holder, position: Int) = holder.bind(getItem(position))
+
+        inner class Holder(view: View) : RecyclerView.ViewHolder(view) {
+            private val icon = view.findViewById<TextView>(R.id.fileIcon)
+            private val name = view.findViewById<TextView>(R.id.fileName)
+            private val meta = view.findViewById<TextView>(R.id.fileMeta)
+
+            fun bind(row: FileRow) {
+                when (row) {
+                    FileRow.Parent -> {
+                        icon.text = "↰"
+                        name.text = ".."
+                        meta.text = "返回上一层"
+                    }
+                    is FileRow.Entry -> {
+                        val file = row.file
+                        icon.text = if (file.directory) "⌂" else "·"
+                        name.text = file.name
+                        meta.text = if (file.directory) "文件夹" else formatByteSize(file.size)
+                    }
+                }
+                itemView.setOnClickListener { onOpen(row) }
+                itemView.setOnLongClickListener {
+                    onLongPress(row)
+                    true
+                }
+            }
+        }
+    }
+
+    /** 文件列表的行：首行「..」导航项与设备文件条目。 */
+    private sealed interface FileRow {
+        data object Parent : FileRow
+        data class Entry(val file: DeviceFile) : FileRow
+    }
+
+    private object RowDiff : DiffUtil.ItemCallback<FileRow>() {
+        override fun areItemsTheSame(oldItem: FileRow, newItem: FileRow): Boolean = when {
+            oldItem is FileRow.Parent && newItem is FileRow.Parent -> true
+            oldItem is FileRow.Entry && newItem is FileRow.Entry -> oldItem.file.path == newItem.file.path
+            else -> false
+        }
+
+        override fun areContentsTheSame(oldItem: FileRow, newItem: FileRow): Boolean = oldItem == newItem
     }
 }

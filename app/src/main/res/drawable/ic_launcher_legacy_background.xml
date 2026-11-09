@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    API 24–25 的旧版图标底：自适应图标从 API 26 才支持，这里用同色圆角方块近似。
+    圆角 18/108 与原设计稿 170.67/1024 的比例一致。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@color/ic_launcher_background"
+        android:pathData="M18,0H90A18,18 0 0 1 108,18V90A18,18 0 0 1 90,108H18A18,18 0 0 1 0,90V18A18,18 0 0 1 18,0Z" />
+</vector>

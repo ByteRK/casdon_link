@@ -29,7 +29,7 @@
         android:layout_width="match_parent"
         android:layout_marginTop="@dimen/space_lg" />
 
-    <ListView
+    <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/stepList"
         style="@style/Widget.CasdonLink.List"
         android:layout_marginTop="@dimen/space_lg" />

@@ -5,6 +5,8 @@
         <item name="colorSecondary">@color/secondary</item>
         <item name="android:colorAccent">@color/primary</item>
         <item name="android:windowLightStatusBar">false</item>
+        <!-- 与 applyDarkSystemBars() 保持一致：深色背景上固定用浅色的状态栏与导航栏图标。 -->
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:windowBackground">@color/background</item>

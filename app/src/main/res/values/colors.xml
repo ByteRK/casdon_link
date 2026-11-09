@@ -14,4 +14,6 @@
     <color name="input_surface">#172337</color>
     <color name="input_stroke">#334155</color>
     <color name="card_stroke">#24FFFFFF</color>
+    <!-- 启动图标底色：沿用设计稿 API.svg 的原始蓝色，不随应用深色背景变化。 -->
+    <color name="ic_launcher_background">#3F70FF</color>
 </resources>

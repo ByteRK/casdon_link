@@ -5,32 +5,40 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.NetworkDiagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
+import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private val telnetClient = TelnetClient()
     private lateinit var deviceStore: DeviceStore
+    private lateinit var recentAdapter: RecentDeviceAdapter
     private var connecting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        applyDarkSystemBars()
         setContentView(R.layout.activity_main)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -38,7 +46,9 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         deviceStore = DeviceStore(this)
+        setUpRecentDevices()
         renderRecentDevices()
+        renderAboutInfo()
         findViewById<Button>(R.id.connectButton).setOnClickListener {
             connect(
                 findViewById<EditText>(R.id.ipInput).text.toString().trim(),
@@ -183,35 +193,44 @@ class MainActivity : AppCompatActivity() {
     private fun isValidHost(host: String): Boolean = host.isNotBlank() && host.length <= 253 &&
         host.matches(Regex("[A-Za-z0-9._:-]+"))
 
+    private fun setUpRecentDevices() {
+        val list = findViewById<RecyclerView>(R.id.recentDevices)
+        list.layoutManager = LinearLayoutManager(this)
+        list.itemAnimator = null
+        recentAdapter = RecentDeviceAdapter(
+            onClick = { record -> fillInputs(record); connect(record.ipAddress, record.port.toString(), record.username, record.password) },
+            onLongClick = { record -> showRecordActions(record) }
+        )
+        list.adapter = recentAdapter
+    }
+
+    /** 点击最近设备时把记录回填到表单，便于在连接前修改地址或端口。 */
+    private fun fillInputs(record: DeviceRecord) {
+        findViewById<EditText>(R.id.ipInput).setText(record.ipAddress)
+        findViewById<EditText>(R.id.portInput).setText(record.port.toString())
+        findViewById<EditText>(R.id.usernameInput).setText(record.username)
+        findViewById<EditText>(R.id.passwordInput).setText(record.password)
+    }
+
+    /**
+     * 刷新最近设备列表。条目超过 [RECENT_VISIBLE_ROWS] 行时把列表高度固定为对应行数并在内部滚动，
+     * 避免记录越攒越多把首页撑长；条目没超过时仍按内容自适应，不留下空白区域。
+     */
     private fun renderRecentDevices() {
-        val container = findViewById<LinearLayout>(R.id.recentDevices)
-        // 注意：这里必须取到 Activity 级别的控件引用再传入 apply，
-        // 因为 apply 内部的 this 是 TextView，直接调用 findViewById 只会在行视图子树里查找。
-        val ipInput = findViewById<EditText>(R.id.ipInput)
-        val portInput = findViewById<EditText>(R.id.portInput)
-        val usernameInput = findViewById<EditText>(R.id.usernameInput)
-        val passwordInput = findViewById<EditText>(R.id.passwordInput)
-        container.removeAllViews()
-        deviceStore.getAll().forEach { record ->
-            val displayName = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
-            val loginHint = if (record.hasPassword) "  ·  已保存密码" else ""
-            // 行外观统一由 row_device.xml + Widget.CasdonLink.RecentDeviceRow 维护，
-            // 代码只负责填充文本与交互，避免样式再次散落在 Kotlin 里。
-            val row = layoutInflater.inflate(R.layout.row_device, container, false) as TextView
-            row.text = "$displayName  ·  Telnet ${record.port}$loginHint"
-            row.setOnClickListener {
-                ipInput.setText(record.ipAddress)
-                portInput.setText(record.port.toString())
-                usernameInput.setText(record.username)
-                passwordInput.setText(record.password)
-                connect(record.ipAddress, record.port.toString(), record.username, record.password)
-            }
-            row.setOnLongClickListener {
-                showRecordActions(record)
-                true
-            }
-            container.addView(row)
+        val records = deviceStore.getAll()
+        recentAdapter.submitList(records)
+        findViewById<View>(R.id.recentTitle).isVisible = records.isNotEmpty()
+
+        val list = findViewById<RecyclerView>(R.id.recentDevices)
+        val params = list.layoutParams
+        params.height = if (records.size > RECENT_VISIBLE_ROWS) {
+            val rowHeight = resources.getDimensionPixelSize(R.dimen.recent_device_row_height)
+            val rowGap = resources.getDimensionPixelSize(R.dimen.space_md)
+            RECENT_VISIBLE_ROWS * (rowHeight + rowGap)
+        } else {
+            ViewGroup.LayoutParams.WRAP_CONTENT
         }
+        list.layoutParams = params
     }
 
     /** 长按最近设备：清除已保存密码或删除整条记录。 */
@@ -237,4 +256,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+    /** 首页底部声明：版本 / 编译时间 / 版权，与参考项目设置页的「关于」信息一致。 */
+    private fun renderAboutInfo() {
+        val info = getString(R.string.about_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) +
+            "\n" + getString(R.string.about_build_time, BuildConfig.BUILD_TIME) +
+            "\n" + getString(R.string.about_copyright)
+        findViewById<TextView>(R.id.aboutInfo).text = info
+    }
+
+    /**
+     * 最近设备列表适配器。行外观由 row_device.xml + Widget.CasdonLink.RecentDeviceRow 维护，
+     * 这里只负责把记录拼成一行文本并转发点击事件。
+     */
+    private class RecentDeviceAdapter(
+        private val onClick: (DeviceRecord) -> Unit,
+        private val onLongClick: (DeviceRecord) -> Unit
+    ) : ListAdapter<DeviceRecord, RecentDeviceAdapter.Holder>(Diff) {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val row = LayoutInflater.from(parent.context).inflate(R.layout.row_device, parent, false) as TextView
+            return Holder(row)
+        }
+
+        override fun onBindViewHolder(holder: Holder, position: Int) = holder.bind(getItem(position))
+
+        inner class Holder(private val row: TextView) : RecyclerView.ViewHolder(row) {
+            fun bind(record: DeviceRecord) {
+                val displayName = if (record.username.isBlank()) record.ipAddress
+                else "${record.ipAddress} · ${record.username}"
+                val loginHint = if (record.hasPassword) "  ·  已保存密码" else ""
+                row.text = "$displayName  ·  Telnet ${record.port}$loginHint"
+                row.setOnClickListener { onClick(record) }
+                row.setOnLongClickListener {
+                    onLongClick(record)
+                    true
+                }
+            }
+        }
+
+        private object Diff : DiffUtil.ItemCallback<DeviceRecord>() {
+            override fun areItemsTheSame(oldItem: DeviceRecord, newItem: DeviceRecord): Boolean =
+                oldItem.ipAddress == newItem.ipAddress && oldItem.port == newItem.port
+
+            override fun areContentsTheSame(oldItem: DeviceRecord, newItem: DeviceRecord): Boolean =
+                oldItem == newItem
+        }
+    }
+
+    private companion object {
+        /** 最近设备列表在不滚动时最多展示的行数。 */
+        const val RECENT_VISIBLE_ROWS = 3
+    }
 }
