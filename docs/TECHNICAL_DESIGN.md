@@ -121,7 +121,7 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 
 目前工程已包含 XML 连接首页、Telnet 终端、文件浏览、修复包导入与有序执行。清单解析器支持 `shell` 与 `file` 步骤，并检查格式版本、重复步骤 ID、ZIP 路径穿越、条目/总体解压大小和 SHA-256。当前文件浏览上传实现由设备 `wget` 拉取手机临时 HTTP 文件，并保留系统文件选择器提供的原文件名；下载实现设备端分块 `dd | base64` 输出后在手机解码并按块校验长度，避免整文件输出挤占受控命令匹配缓冲。受 NVT 约束，尚未实现原始二进制 Telnet 上传。
 
-修复包步骤执行要求当前已有 Telnet 会话；每个步骤完成后更新页面状态。Shell 命令允许用户在执行前审阅。清单脚本作为设备命令运行，因此必须将修复包视为有 root 权限的可信内容。
+修复包步骤执行要求当前已有 Telnet 会话；每个步骤完成后更新页面状态。界面只展示步骤标题与状态圆点（待执行 / 执行中 / 成功 / 失败），不展示 shell 命令、传输路径等步骤细节；执行前仅做一次二次确认弹窗，不列出具体步骤内容。失败时除了圆点变红，还会用 toast 补上失败原因。清单脚本作为设备命令运行，因此必须将修复包视为有 root 权限的可信内容。
 
 完整功能开关：连接成功后设备页默认只显示「修复包」，交互终端、文件管理等高级操作以及后续新增的受限功能都放在 `advancedActions` 容器中并默认隐藏。只有在首页左上角标题区连续点击 6 下（相邻点击间隔不超过 1.2 秒）并输入正确密码才开启完整功能；开关持久化在本机 SharedPreferences，应用与手机重启后仍有效。已开启时再次连续点击 6 下即可关闭。密码常量位于 `data/FeatureGate.kt` 的 `UNLOCK_PASSWORD`，更换密码只改这一处。
 
@@ -138,7 +138,8 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 - `colors.xml`：只放语义色（`background`、`surface`、`primary`、`secondary`、`text_primary`、`text_secondary`、`text_hint`、`danger`、`divider`、`input_surface`、`input_stroke`、`card_stroke`）。新增颜色先判断能否复用已有语义色。
 - `dimens.xml`：`space_*` 为 4dp 栅格间距；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
 - `styles.xml`：`Text.*` 只描述文字（字号、颜色、字重、行距），`Widget.*` 描述完整控件（尺寸、背景、内边距、文字）。常用项：
-  - 文字：`Text.CasdonLink.Eyebrow`（顶部小标题）、`HeroTitle`/`ScreenTitle`/`ToolbarTitle`/`SectionTitle`（层级标题）、`Subtitle`/`Label`/`Caption`/`MultilineCaption`、`Body`/`MultilineBody`、`Status`、`Mono`、`ListItemTitle`/`ListItemStrongTitle`/`ListItemMeta`、`DialogTitle`。
+  - 文字：`Text.CasdonLink.Eyebrow`（顶部小标题）、`HeroTitle`/`ScreenTitle`/`ToolbarTitle`/`SectionTitle`（层级标题）、`Subtitle`/`Label`/`Caption`/`MultilineCaption`、`Body`/`MultilineBody`、`Status`、`Mono`、`ListItemTitle`/`ListItemStrongTitle`/`ListItemMeta`（含 `.Danger` 失败色变体）、`DialogTitle`。
+  - 超长标题：`ToolbarTitle` 与 `ListItemStrongTitle` 已内置单行跑马灯（`singleLine` + `ellipsize=marquee` + `marqueeRepeatLimit=marquee_forever` + `selected=true`），文本未超出宽度时不会滚动；使用时父布局必须给出宽度约束（`0dp` + `layout_weight`，或 `match_parent`）。RecyclerView 行内复用需在绑定后再设一次 `isSelected`，否则文本换新后跑马灯不会启动。
   - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。
   - 按钮：`Button.Primary`（主操作）、`Button.Secondary`（次操作）、`Button.Small`（小号次操作）、`Button.Danger`（危险操作）、`Button.Icon`（返回符号）、`Button.Inline`（行内固定宽度）。
   - 输入：`EditText`、`EditText.Port`。

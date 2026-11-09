@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    修复步骤行：左侧状态圆点 + 步骤标题；错误说明默认隐藏，只在执行失败时显示第二行。
+    标题单行跑马灯，超长时横向滚动。
+    clipToPadding/clipChildren 必须关闭：圆点放大时会超出内容区，ViewGroup 默认
+    按 padding 裁剪子视图，会把放大圆点的左侧切掉一块。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    style="@style/Widget.CasdonLink.ListRowBlock">
+    style="@style/Widget.CasdonLink.ListRowBlock"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
 
-    <TextView
-        android:id="@+id/stepName"
-        style="@style/Text.CasdonLink.ListItemStrongTitle" />
+    <View
+        android:id="@+id/stepDot"
+        style="@style/Widget.CasdonLink.StepDot"
+        android:background="@drawable/dot_step_pending" />
 
-    <TextView
-        android:id="@+id/stepDetail"
-        style="@style/Text.CasdonLink.ListItemMeta"
-        android:layout_marginTop="5dp" />
+    <LinearLayout style="@style/Widget.CasdonLink.StepBody">
+
+        <TextView
+            android:id="@+id/stepName"
+            style="@style/Text.CasdonLink.ListItemStrongTitle" />
+
+        <TextView
+            android:id="@+id/stepDetail"
+            style="@style/Text.CasdonLink.ListItemMeta.Danger"
+            android:layout_marginTop="@dimen/space_xs"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
 </LinearLayout>

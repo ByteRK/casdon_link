@@ -37,6 +37,8 @@ class TerminalActivity : AppCompatActivity() {
         output = findViewById(R.id.terminalOutput)
         input = findViewById(R.id.commandInput)
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
+        // 主机名/标题过长时用 marquee 横向滚动，短标题不会滚动。
+        findViewById<TextView>(R.id.terminalTitle).isSelected = true
         findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
         if (!DeviceSessionHolder.hasTarget()) {
             Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()

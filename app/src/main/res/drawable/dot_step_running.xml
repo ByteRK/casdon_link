@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 修复步骤状态圆点：执行中。呼吸动效由代码叠加在控件上，这里只描述颜色。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+
+    <solid android:color="@color/status_running" />
+
+</shape>

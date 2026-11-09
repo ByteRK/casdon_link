@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 修复步骤状态圆点：待执行。颜色统一来自 status_* 令牌，尺寸由布局样式决定。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+
+    <solid android:color="@color/status_pending" />
+
+</shape>

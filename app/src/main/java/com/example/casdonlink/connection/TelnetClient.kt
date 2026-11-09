@@ -337,7 +337,11 @@ class TelnetClient {
                             val trailer = current.substring(endIndex + endMarker.length)
                             val code = Regex("^:(\\d+)").find(trailer)?.groupValues?.get(1)?.toIntOrNull()
                             if (code != null && code != 0) {
-                                throw IllegalStateException("命令失败（$code）：${body.takeLast(240)}")
+                                // 设备没有输出时省略冒号，避免出现「命令失败（1）：」这种悬空文案。
+                                val output = body.takeLast(240)
+                                throw IllegalStateException(
+                                    if (output.isEmpty()) "命令失败（退出码 $code）" else "命令失败（$code）：$output"
+                                )
                             }
                             return@withContext body
                         }

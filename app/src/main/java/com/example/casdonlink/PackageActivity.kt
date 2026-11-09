@@ -1,10 +1,15 @@
 package com.example.casdonlink
 
+import android.animation.Animator
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -28,13 +33,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** 执行中圆点的呼吸动效周期（单程）。 */
+private const val PULSE_DURATION_MS = 750L
+
 class PackageActivity : AppCompatActivity() {
     private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importPackage(uri)
     }
     private var imported: PackageImporter.ImportedPackage? = null
     private var running = false
-    private val states = mutableListOf<String>()
+    private val states = mutableListOf<StepState>()
     private lateinit var stepAdapter: StepAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,9 +88,11 @@ class PackageActivity : AppCompatActivity() {
             try {
                 val result = PackageImporter(this@PackageActivity).import(uri) { contentResolver.openInputStream(it) }
                 imported = result
-                states.clear(); states.addAll(result.manifest.steps.map { "待执行" })
+                states.clear(); states.addAll(result.manifest.steps.map { StepState(StepStatus.PENDING) })
                 findViewById<TextView>(R.id.packageTitle).text = "${result.manifest.name} · ${result.manifest.version}"
-                findViewById<TextView>(R.id.packageDescription).text = "${result.manifest.description}\n${result.manifest.steps.size} 个步骤 · 请核对目标与命令"
+                // 标题可能超出工具栏宽度，选中后由 marquee 横向滚动显示完整内容。
+                findViewById<TextView>(R.id.packageTitle).isSelected = true
+                findViewById<TextView>(R.id.packageDescription).text = "${result.manifest.description}\n共 ${result.manifest.steps.size} 个步骤"
                 renderSteps()
             } catch (error: Exception) { toast(error.message ?: "导入失败"); finish() }
         }
@@ -93,14 +103,25 @@ class PackageActivity : AppCompatActivity() {
         val result = imported ?: return
         stepAdapter.submitList(
             result.manifest.steps.mapIndexed { index, step ->
-                StepRow(index, step, states.getOrElse(index) { "待执行" })
+                StepRow(index, step, states.getOrElse(index) { StepState(StepStatus.PENDING) })
             }
         )
         findViewById<TextView>(R.id.packageProgress).text = "${result.manifest.steps.size} 步"
     }
 
-    /** 修复步骤行：序号、步骤内容与当前执行状态。 */
-    private data class StepRow(val index: Int, val step: RepairStep, val state: String)
+    /** 步骤状态：圆点资源与读屏文案随状态变化，列表不展示步骤内容。 */
+    private enum class StepStatus(val dotRes: Int, val label: String) {
+        PENDING(R.drawable.dot_step_pending, "待执行"),
+        RUNNING(R.drawable.dot_step_running, "执行中"),
+        SUCCESS(R.drawable.dot_step_success, "成功"),
+        FAILED(R.drawable.dot_step_failed, "失败")
+    }
+
+    /** message 只在失败时携带原因，其余状态不需要第二行。 */
+    private data class StepState(val status: StepStatus, val message: String? = null)
+
+    /** 修复步骤行：序号、标题与状态圆点，不携带命令与传输路径。 */
+    private data class StepRow(val index: Int, val step: RepairStep, val state: StepState)
 
     private class StepAdapter : ListAdapter<StepRow, StepAdapter.Holder>(StepDiff) {
 
@@ -111,17 +132,58 @@ class PackageActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: Holder, position: Int) = holder.bind(getItem(position))
 
+        override fun onViewRecycled(holder: Holder) {
+            holder.stopPulse()
+            super.onViewRecycled(holder)
+        }
+
         class Holder(view: View) : RecyclerView.ViewHolder(view) {
+            private val dot = view.findViewById<View>(R.id.stepDot)
             private val name = view.findViewById<TextView>(R.id.stepName)
             private val detail = view.findViewById<TextView>(R.id.stepDetail)
+            private val dotRadius = view.resources.getDimension(R.dimen.step_dot_size) / 2f
+            private var pulse: Animator? = null
 
             fun bind(row: StepRow) {
                 name.text = "${row.index + 1}. ${row.step.name}"
-                val detailText = when (val step = row.step) {
-                    is RepairStep.File -> "传输 ${step.source} → ${step.target}"
-                    is RepairStep.Shell -> "命令 · ${step.command}"
+                // selected 让超长标题跑马灯滚动；复用行时重置一次，保证重新绑定的文本也会滚动。
+                name.isSelected = false
+                name.isSelected = true
+                detail.text = row.state.message
+                detail.visibility = if (row.state.message.isNullOrBlank()) View.GONE else View.VISIBLE
+                dot.setBackgroundResource(row.state.status.dotRes)
+                dot.contentDescription = row.state.status.label
+                stopPulse()
+                if (row.state.status == StepStatus.RUNNING) startPulse()
+            }
+
+            /** 执行中的圆点做缩放 + 透明度呼吸，反向无限循环；离开执行中即复位。 */
+            private fun startPulse() {
+                // bind 时控件还没布局，宽高为 0，默认轴心也会是 (0,0)；这里直接把轴心钉在圆心，
+                // 保证放大时向四周均匀生长，而不是只向右下长。
+                dot.pivotX = dotRadius
+                dot.pivotY = dotRadius
+                pulse = ObjectAnimator.ofPropertyValuesHolder(
+                    dot,
+                    PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.7f),
+                    PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.7f),
+                    PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.4f)
+                ).apply {
+                    duration = PULSE_DURATION_MS
+                    repeatCount = ValueAnimator.INFINITE
+                    repeatMode = ValueAnimator.REVERSE
+                    interpolator = AccelerateDecelerateInterpolator()
+                    start()
                 }
-                detail.text = "${row.state} · $detailText"
+            }
+
+            /** 取消动效并恢复缩放与透明度，避免复用的行带着上一项的动画残留。 */
+            fun stopPulse() {
+                pulse?.cancel()
+                pulse = null
+                dot.scaleX = 1f
+                dot.scaleY = 1f
+                dot.alpha = 1f
             }
         }
 
@@ -136,13 +198,10 @@ class PackageActivity : AppCompatActivity() {
 
     private fun confirmRun() {
         val pkg = imported ?: run { picker.launch(arrayOf("*/*")); return }
-        val summary = pkg.manifest.steps.mapIndexed { index, step ->
-            "${index + 1}. ${step.name}: " + when (step) {
-                is RepairStep.File -> "${step.source} → ${step.target}"
-                is RepairStep.Shell -> step.command
-            }
-        }.joinToString("\n")
-        MaterialAlertDialogBuilder(this).setTitle("确认执行 ${pkg.manifest.name}？").setMessage(summary)
+        // 步骤内容对使用者透明：弹窗只做二次确认，不列出命令或传输路径。
+        val summary = "${pkg.manifest.name} · ${pkg.manifest.version}\n" +
+            "共 ${pkg.manifest.steps.size} 个步骤，将按顺序自动执行。执行期间请保持设备连接。"
+        MaterialAlertDialogBuilder(this).setTitle("确认执行？").setMessage(summary)
             .setNegativeButton("取消", null).setPositiveButton("执行") { _, _ -> runPackage() }.show()
     }
 
@@ -158,7 +217,7 @@ class PackageActivity : AppCompatActivity() {
                     val session = DeviceSessionHolder.ensure()
                         ?: throw IllegalStateException("设备连接已断开")
                     val files = FileRepository(session)
-                    states[index] = "执行中"; renderSteps()
+                    states[index] = StepState(StepStatus.RUNNING); renderSteps()
                     try {
                         when (step) {
                             is RepairStep.Shell -> session.execute(step.command, step.timeoutSeconds * 1000)
@@ -171,9 +230,9 @@ class PackageActivity : AppCompatActivity() {
                                 try { files.uploadFromHttp(url, step.target) } finally { server.close() }
                             }
                         }
-                        states[index] = "成功"
+                        states[index] = StepState(StepStatus.SUCCESS)
                     } catch (error: Exception) {
-                        states[index] = "失败 · ${error.message ?: "错误"}"
+                        states[index] = StepState(StepStatus.FAILED, error.message ?: "未知错误")
                         renderSteps()
                         if (!step.continueOnError) throw error
                     }

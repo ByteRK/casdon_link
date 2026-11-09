@@ -40,10 +40,19 @@
         <item name="android:textStyle">bold</item>
     </style>
 
-    <!-- 二级页面标题栏中的标题 -->
+    <!--
+        二级页面标题栏中的标题。
+        ellipsize=marquee：标题超长时横向滚动显示完整内容；文本未超出宽度时 TextView
+        不会滚动，因此短标题保持静止。跑马灯需要单行且有宽度约束（布局里都是 0dp+weight），
+        并由代码设 isSelected = true 启动（android:selected 无法在 style 中声明）。
+    -->
     <style name="Text.CasdonLink.ToolbarTitle" parent="Text.CasdonLink">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">marquee</item>
+        <item name="android:marqueeRepeatLimit">marquee_forever</item>
+        <item name="android:scrollHorizontally">true</item>
+        <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">@dimen/text_toolbar_title</item>
         <item name="android:textStyle">bold</item>
@@ -137,10 +146,17 @@
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
-    <!-- 列表项标题（加粗、可换行，如修复步骤名） -->
+    <!--
+        列表项标题（加粗、单行）。超长时跑马灯滚动（由代码设 isSelected = true 启动），
+        文本未超出宽度时不会滚动；需要跑马灯的行必须在横向布局里有宽度约束。
+    -->
     <style name="Text.CasdonLink.ListItemStrongTitle" parent="Text.CasdonLink">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">marquee</item>
+        <item name="android:marqueeRepeatLimit">marquee_forever</item>
+        <item name="android:scrollHorizontally">true</item>
+        <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">@dimen/text_body</item>
         <item name="android:textStyle">bold</item>
@@ -152,6 +168,11 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/text_secondary</item>
         <item name="android:textSize">@dimen/text_caption</item>
+    </style>
+
+    <!-- 列表项次要信息（失败原因，用危险色强调） -->
+    <style name="Text.CasdonLink.ListItemMeta.Danger" parent="Text.CasdonLink.ListItemMeta">
+        <item name="android:textColor">@color/danger</item>
     </style>
 
     <!-- 列表行前导符号（文件/目录图标位） -->
@@ -271,6 +292,21 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:orientation">vertical</item>
         <item name="android:padding">@dimen/row_padding</item>
+    </style>
+
+    <!-- 修复步骤状态圆点：颜色与尺寸集中在样式里，状态换色由代码切换背景。 -->
+    <style name="Widget.CasdonLink.StepDot" parent="Widget.CasdonLink">
+        <item name="android:layout_width">@dimen/step_dot_size</item>
+        <item name="android:layout_height">@dimen/step_dot_size</item>
+        <item name="android:layout_marginEnd">@dimen/space_md</item>
+    </style>
+
+    <!-- 修复步骤行右侧内容列（标题 + 仅在失败时出现的错误说明） -->
+    <style name="Widget.CasdonLink.StepBody" parent="Widget.CasdonLink">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
     </style>
 
     <!-- 最近设备记录条目；高度固定为单行，列表才能按行数约束可视区域。 -->
