@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    统一尺寸令牌：间距、控件高度、字号。
+    页面布局只引用这里的值，不直接写裸数值，便于整体调整视觉密度。
+-->
+<resources>
+
+    <!-- 基础间距（4dp 栅格） -->
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">20dp</dimen>
+    <dimen name="space_2xl">24dp</dimen>
+    <dimen name="space_3xl">28dp</dimen>
+
+    <!-- 页面与卡片内边距 -->
+    <dimen name="screen_padding_horizontal">@dimen/space_xl</dimen>
+    <dimen name="screen_padding_vertical">@dimen/space_xl</dimen>
+    <dimen name="screen_padding_bottom">@dimen/space_2xl</dimen>
+    <dimen name="card_padding">@dimen/space_xl</dimen>
+    <dimen name="row_padding">14dp</dimen>
+
+    <!-- 控件尺寸 -->
+    <dimen name="control_height">52dp</dimen>
+    <dimen name="control_height_small">44dp</dimen>
+    <dimen name="control_width_inline">70dp</dimen>
+    <dimen name="icon_button_width">52dp</dimen>
+    <dimen name="icon_button_height">48dp</dimen>
+    <dimen name="field_padding_horizontal">@dimen/space_lg</dimen>
+    <dimen name="port_field_width">92dp</dimen>
+    <dimen name="toolbar_height">56dp</dimen>
+    <dimen name="list_row_height">64dp</dimen>
+
+    <!-- 字号 -->
+    <dimen name="text_caption">12sp</dimen>
+    <dimen name="text_label">13sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_body_large">15sp</dimen>
+    <dimen name="text_section_title">16sp</dimen>
+    <dimen name="text_toolbar_title">20sp</dimen>
+    <dimen name="text_screen_title">26sp</dimen>
+    <dimen name="text_hero">30sp</dimen>
+    <dimen name="text_icon">24sp</dimen>
+    <dimen name="text_glyph">20sp</dimen>
+
+</resources>

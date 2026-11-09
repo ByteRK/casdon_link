@@ -125,3 +125,17 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 
 会话数据流采用单一后台收集器：握手完成后由唯一协程读取 socket，解码结果同时供终端订阅与受控命令的结束标记匹配；终端未在前台时输出进入有上限的回放缓冲，回到终端页即补发。设备断开由收集器检测 EOF 统一通知，终端页与设备页会同步退出并回到首页。
 
+## 10. 界面样式约定
+
+界面视觉参数集中在 `res/values/colors.xml`、`res/values/dimens.xml`、`res/values/styles.xml` 三处，布局文件只引用样式和令牌，不写裸字号、颜色、圆角与内边距。
+
+- `colors.xml`：只放语义色（`background`、`surface`、`primary`、`secondary`、`text_primary`、`text_secondary`、`text_hint`、`danger`、`divider`、`input_surface`、`input_stroke`、`card_stroke`）。新增颜色先判断能否复用已有语义色。
+- `dimens.xml`：`space_*` 为 4dp 栅格间距；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
+- `styles.xml`：`Text.*` 只描述文字（字号、颜色、字重、行距），`Widget.*` 描述完整控件（尺寸、背景、内边距、文字）。常用项：
+  - 文字：`Text.CasdonLink.Eyebrow`（顶部小标题）、`HeroTitle`/`ScreenTitle`/`ToolbarTitle`/`SectionTitle`（层级标题）、`Subtitle`/`Label`/`Caption`/`MultilineCaption`、`Body`/`MultilineBody`、`Status`、`Mono`、`ListItemTitle`/`ListItemStrongTitle`/`ListItemMeta`、`DialogTitle`。
+  - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。
+  - 按钮：`Button.Primary`（主操作）、`Button.Secondary`（次操作）、`Button.Small`（小号次操作）、`Button.Danger`（危险操作）、`Button.Icon`（返回符号）、`Button.Inline`（行内固定宽度）。
+  - 输入：`EditText`、`EditText.Port`。
+
+新建页面的做法：根布局用 `Widget.CasdonLink.Screen.*`，标题栏用 `Widget.CasdonLink.Toolbar`，卡片用 `Card`，按钮只从上述按钮样式里选。需要局部差异时在布局中写少量覆盖属性，跨页面复用的差异则新增子样式（例如 `Button.Secondary.Wide`），不要在多个布局里重复同一组属性。列表行统一使用独立 `row_*.xml`，代码只负责绑定数据和事件，不得在 Kotlin 中拼装样式。
+

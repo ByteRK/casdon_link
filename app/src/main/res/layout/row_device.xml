@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首页「最近设备」条目：样式统一在 Widget.CasdonLink.RecentDeviceRow 中维护。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.CasdonLink.RecentDeviceRow"
+    tools:text="192.168.1.100 · admin · Telnet 23 · 已保存密码" />

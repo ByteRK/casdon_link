@@ -1,54 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/packageRoot"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/background"
-    android:orientation="vertical"
-    android:padding="20dp">
-    <LinearLayout android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+    style="@style/Widget.CasdonLink.Screen.Column">
+
+    <LinearLayout style="@style/Widget.CasdonLink.Toolbar">
+
         <Button
             android:id="@+id/packageBack"
-            android:padding="0dp"
-            android:layout_width="52dp"
-            android:layout_height="48dp"
-            android:text="‹"
-            android:textSize="24sp"/>
-        <TextView android:id="@+id/packageTitle"
+            style="@style/Widget.CasdonLink.Button.Icon"
+            android:text="‹" />
+
+        <TextView
+            android:id="@+id/packageTitle"
+            style="@style/Text.CasdonLink.ToolbarTitle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="@dimen/space_md"
             android:layout_weight="1"
-            android:text="修复包"
-            android:textColor="@color/text_primary"
-            android:textSize="19sp"
-            android:textStyle="bold"/>
-        <TextView android:id="@+id/packageProgress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/secondary"
-            android:textSize="12sp"/>
+            android:text="修复包" />
+
+        <TextView
+            android:id="@+id/packageProgress"
+            style="@style/Text.CasdonLink.Caption" />
     </LinearLayout>
-    <TextView android:id="@+id/packageDescription"
+
+    <TextView
+        android:id="@+id/packageDescription"
+        style="@style/Text.CasdonLink.Label"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="13sp"/>
-    <ListView android:id="@+id/stepList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:layout_weight="1"
-        android:divider="#22334455"
-        android:dividerHeight="1dp"/>
-    <Button android:id="@+id/runPackage"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="12dp"
-        android:text="执行修复"
-        android:textAllCaps="false"/>
+        android:layout_marginTop="@dimen/space_lg" />
+
+    <ListView
+        android:id="@+id/stepList"
+        style="@style/Widget.CasdonLink.List"
+        android:layout_marginTop="@dimen/space_lg" />
+
+    <Button
+        android:id="@+id/runPackage"
+        style="@style/Widget.CasdonLink.Button.Primary"
+        android:layout_marginTop="@dimen/space_md"
+        android:text="执行修复" />
+
 </LinearLayout>

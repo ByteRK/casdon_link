@@ -201,28 +201,22 @@ class MainActivity : AppCompatActivity() {
         deviceStore.getAll().forEach { record ->
             val displayName = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
             val loginHint = if (record.hasPassword) "  ·  已保存密码" else ""
-            val row = TextView(this).apply {
-                text = "$displayName  ·  Telnet ${record.port}$loginHint"
-                textSize = 14f
-                setTextColor(getColor(R.color.text_primary))
-                setPadding(18, 20, 18, 20)
-                background = getDrawable(R.drawable.bg_card)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    ipInput.setText(record.ipAddress)
-                    portInput.setText(record.port.toString())
-                    usernameInput.setText(record.username)
-                    passwordInput.setText(record.password)
-                    connect(record.ipAddress, record.port.toString(), record.username, record.password)
-                }
-                setOnLongClickListener {
-                    showRecordActions(record)
-                    true
-                }
+            // 行外观统一由 row_device.xml + Widget.CasdonLink.RecentDeviceRow 维护，
+            // 代码只负责填充文本与交互，避免样式再次散落在 Kotlin 里。
+            val row = layoutInflater.inflate(R.layout.row_device, container, false) as TextView
+            row.text = "$displayName  ·  Telnet ${record.port}$loginHint"
+            row.setOnClickListener {
+                ipInput.setText(record.ipAddress)
+                portInput.setText(record.port.toString())
+                usernameInput.setText(record.username)
+                passwordInput.setText(record.password)
+                connect(record.ipAddress, record.port.toString(), record.username, record.password)
             }
-            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 }
-            )
+            row.setOnLongClickListener {
+                showRecordActions(record)
+                true
+            }
+            container.addView(row)
         }
     }
 
