@@ -88,7 +88,8 @@ class FileRepository(private val session: TelnetClient.Session) {
                     name = name,
                     path = childPath(path, name),
                     directory = line.endsWith("/"),
-                    size = 0
+                    // 简易方式只列名字，拿不到大小，用 UNKNOWN_SIZE 区分于真正的 0 字节文件。
+                    size = UNKNOWN_SIZE
                 )
             }
             .sortedWith(FILE_ORDER)
@@ -104,15 +105,116 @@ class FileRepository(private val session: TelnetClient.Session) {
 
     suspend fun delete(path: String) { session.execute("rm -rf -- ${quote(path)}") }
 
+    /**
+     * 新建空文件。`touch` 在目标已存在时只更新时间戳，不会清空原有内容；
+     * 设备缺少 `touch` 时由 shell 重定向作为傅底。
+     */
+    suspend fun createFile(path: String) {
+        session.execute("command -v touch >/dev/null 2>&1 && touch ${quote(path)} || : > ${quote(path)}")
+    }
+
+    /** 新建目录，已存在时视为成功（`-p` 语义，不报错）。 */
+    suspend fun createDirectory(path: String) {
+        session.execute("mkdir -p ${quote(path)}")
+    }
+
     suspend fun rename(source: String, target: String) {
         session.execute("mv -- ${quote(source)} ${quote(target)}")
     }
 
-    suspend fun uploadFromHttp(url: String, target: String) {
+    /**
+     * 通过局域网 HTTP 让设备端 `wget` 拉取文件，并在传输期间轮询设备端已写入的字节数。
+     *
+     * 大文件如果让 wget 前台执行，会一直占用受控命令通道直到超时，既看不到进度，
+     * 也无法判断是否卡死。这里把 wget 放进后台子 shell，并把退出码写到旁路文件，
+     * 再用独立的短命令轮询大小，因此可以上报真实进度、检测长时间无进展，
+     * 并在取消时杀掉设备端进程、删掉半个文件。
+     */
+    suspend fun uploadFromHttp(
+        url: String,
+        target: String,
+        totalBytes: Long = 0,
+        isCancelled: () -> Boolean = { false },
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
+    ) {
         require(url.startsWith("http://")) { "仅支持局域网 HTTP 传输" }
-        // 大文件经 Wi-Fi 传输可能超过默认 8 秒，给 wget 留足时间；
-        // 结束时仍由结束标记判定完成或失败。
-        session.execute("wget -O ${quote(target)} ${quote(url)}", timeoutMs = UPLOAD_TIMEOUT_MS)
+        // 只读文件系统（如嵌入式设备的 squashfs 根目录）无法写入临时文件，
+        // 此时 wget 会立即失败且退出码也写不下来，必须提前探测并给出明确提示。
+        val dir = target.substringBeforeLast('/', "/").ifEmpty { "/" }
+        ensureWritable(dir)
+        // 临时文件与退出码都放在目标同目录，不依赖 /tmp 是否可写。
+        val part = "$target.casdonpart"
+        val marker = "$target.casdonrc"
+        val pid = startBackgroundTransfer(url, part, marker)
+        var lastSize = 0L
+        var lastChange = System.currentTimeMillis()
+        val startedAt = lastChange
+        try {
+            while (true) {
+                if (isCancelled()) throw IllegalStateException("已取消")
+                val (size, code) = pollTransfer(part, marker)
+                if (size > lastSize) {
+                    lastSize = size
+                    lastChange = System.currentTimeMillis()
+                }
+                val total = if (totalBytes > 0) totalBytes else size
+                onProgress(size, total)
+                if (code != null) {
+                    if (code != 0) throw IllegalStateException("设备端下载失败（退出码 $code）")
+                    session.execute("mv -f ${quote(part)} ${quote(target)}")
+                    onProgress(total, total)
+                    return
+                }
+                val now = System.currentTimeMillis()
+                // 一个字节都没收到时用更短的窗口，避免权限/命令缺失等问题让用户干等。
+                val idleLimit = if (lastSize == 0L) FIRST_BYTE_TIMEOUT_MS else STALL_TIMEOUT_MS
+                if (now - lastChange > idleLimit) {
+                    throw IllegalStateException("传输超时（${idleLimit / 1000} 秒内没有收到数据）")
+                }
+                if (now - startedAt > UPLOAD_MAX_MS) throw IllegalStateException("传输超时（文件过大或网络过慢）")
+                kotlinx.coroutines.delay(POLL_INTERVAL_MS)
+            }
+        } catch (error: Exception) {
+            // 失败或取消时清掉后台进程与残留的半成品，避免目录里留下无用文件。
+            runCatching { session.execute("kill $pid 2>/dev/null; rm -f ${quote(part)}", timeoutMs = 5_000) }
+            throw error
+        } finally {
+            runCatching { session.execute("rm -f ${quote(marker)}", timeoutMs = 5_000) }
+        }
+    }
+
+    /** 用一次性探测文件确认目录真能写入（`-w` 在只读挂载上会被 root 权限绕过，不可靠）。 */
+    private suspend fun ensureWritable(dir: String) {
+        val probe = dir.trimEnd('/') + "/.casdonprobe"
+        val output = session.execute(
+            "if : > ${quote(probe)} 2>/dev/null; then rm -f ${quote(probe)}; echo ok; else echo no; fi"
+        )
+        if (!output.contains("ok")) throw IllegalStateException("目录不可写：$dir")
+    }
+
+    /** 启动后台 wget，返回设备端进程号，供取消时终止。 */
+    private suspend fun startBackgroundTransfer(url: String, part: String, marker: String): String {
+        val script = "rm -f ${quote(part)} ${quote(marker)}; " +
+            "( wget -O ${quote(part)} ${quote(url)} >/dev/null 2>&1; echo \$? > ${quote(marker)} ) >/dev/null 2>&1 & echo \$!"
+        val output = session.execute(script, timeoutMs = 10_000)
+        return output.lineSequence().mapNotNull { it.trim().toLongOrNull() }.lastOrNull()?.toString()
+            ?: throw IllegalStateException("无法启动设备端下载")
+    }
+
+    /** 轮询一次传输状态，返回「已写入字节数」与「wget 退出码（未结束时为 null）」。 */
+    private suspend fun pollTransfer(part: String, marker: String): Pair<Long, Int?> {
+        // 先判断文件存在再取大小：设备缺少 stat 时用 wc 兜底，且避免不存在的路径向 pty 打错误。
+        val script = "s=0; f=${quote(part)}; " +
+            "[ -f \"\$f\" ] && { s=\$(stat -c %s \"\$f\" 2>/dev/null); [ -n \"\$s\" ] || s=\$(wc -c < \"\$f\" 2>/dev/null); }; " +
+            "c=\$(cat ${quote(marker)} 2>/dev/null); " +
+            "printf '%s %s\\n' \"\${s:-0}\" \"\$c\""
+        val output = session.execute(script, timeoutMs = 10_000)
+        val record = output.lineSequence()
+            .map { it.trim() }
+            .mapNotNull { POLL_RECORD.find(it) }
+            .lastOrNull()
+            ?: throw IllegalStateException("无法读取传输进度")
+        return (record.groupValues[1].toLongOrNull() ?: 0L) to record.groupValues[2].toIntOrNull()
     }
 
     /**
@@ -122,7 +224,11 @@ class FileRepository(private val session: TelnetClient.Session) {
      * 表现为超时。这里按固定块大小逐块 `dd | base64`，每块输出都远小于缓冲区上限，
      * 再在手机侧拼接解码；同时避免一次命令等待过久。
      */
-    suspend fun downloadBase64(path: String): ByteArray {
+    suspend fun downloadBase64(
+        path: String,
+        isCancelled: () -> Boolean = { false },
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
+    ): ByteArray {
         // BusyBox 一般带 stat；缺失时退回到只读元数据的 wc -c。
         val size = runCatching { session.execute("stat -c %s ${quote(path)}") }.getOrNull()
             ?.trim()?.toLongOrNull()
@@ -132,8 +238,10 @@ class FileRepository(private val session: TelnetClient.Session) {
         val output = java.io.ByteArrayOutputStream(
             minOf(size, 4L * 1024 * 1024).toInt()
         )
+        onProgress(0, size)
         var offset = 0L
         while (offset < size) {
+            if (isCancelled()) throw IllegalStateException("已取消")
             val index = offset / DOWNLOAD_CHUNK_BYTES
             val expected = minOf(DOWNLOAD_CHUNK_BYTES.toLong(), size - offset).toInt()
             val encoded = session.execute(
@@ -147,6 +255,7 @@ class FileRepository(private val session: TelnetClient.Session) {
             }
             output.write(chunk)
             offset += chunk.size
+            onProgress(offset, size)
         }
         return output.toByteArray()
     }
@@ -159,7 +268,16 @@ class FileRepository(private val session: TelnetClient.Session) {
         /** 单次下载分块大小；base64 后约 175K 字符，留出足够余量。 */
         const val DOWNLOAD_CHUNK_BYTES = 128 * 1024
         const val DOWNLOAD_CHUNK_TIMEOUT_MS = 20_000L
-        const val UPLOAD_TIMEOUT_MS = 120_000L
+        /** 上传进度轮询间隔；太短会打断传输，太长进度条会跳。 */
+        const val POLL_INTERVAL_MS = 400L
+        /** 一段时间内设备端文件大小没有增长，判定链路已断。 */
+        const val STALL_TIMEOUT_MS = 90_000L
+        /** 一个字节都还没到时的容忍时间，用于快速暴露写入/命令问题。 */
+        const val FIRST_BYTE_TIMEOUT_MS = 20_000L
+        /** 单次上传的硬上限，防止设备端进程挂死时无限等待。 */
+        const val UPLOAD_MAX_MS = 20 * 60_000L
+        /** 上传轮询返回的 `已写入字节数 [退出码]`；未结束时第二列为空，可能被 trim 掉。 */
+        val POLL_RECORD = Regex("^(\\d+)(?:\\s+(\\d+))?$")
         /** 去掉颜色、光标控制等 ANSI 序列，避免干扰按行解析。 */
         val ANSI_ESCAPE = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
         /** TAB 被展开成空格时的兼容格式：`类型 + 空白 + 大小 + 空白 + 名称`。 */

@@ -11,6 +11,9 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.files.PhoneHttpServer
 import com.example.casdonlink.files.LocalAddress
@@ -32,10 +35,32 @@ class PackageActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContentView(R.layout.activity_package)
+        applySystemBarInsets()
         findViewById<Button>(R.id.packageBack).setOnClickListener { finish() }
         findViewById<Button>(R.id.runPackage).setOnClickListener { confirmRun() }
         picker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+    }
+
+    /**
+     * targetSdk 35+ 强制 edge-to-edge，内容会画到状态栏/导航栏下面。
+     * 这里把系统栏高度叠加到根布局原有 padding 上，避免标题栏贴顶、底部按钮贴边。
+     */
+    private fun applySystemBarInsets() {
+        val root = findViewById<View>(R.id.packageRoot)
+        val base = intArrayOf(root.paddingLeft, root.paddingTop, root.paddingRight, root.paddingBottom)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(
+                base[0] + bars.left,
+                base[1] + bars.top,
+                base[2] + bars.right,
+                base[3] + bars.bottom
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun importPackage(uri: android.net.Uri) {
