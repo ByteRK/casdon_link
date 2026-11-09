@@ -50,18 +50,29 @@
             android:layout_marginTop="@dimen/space_2xl"
             android:text="设备操作" />
 
-        <Button
-            android:id="@+id/terminalButton"
-            style="@style/Widget.CasdonLink.Button.Primary"
-            android:layout_marginTop="@dimen/space_md"
-            android:text="交互终端" />
+        <!-- 受限操作容器：默认隐藏，仅在开启完整功能后显示；
+             后续新增的受限功能都放进这里，避免默认暴露给普通售后操作。 -->
+        <LinearLayout
+            android:id="@+id/advancedActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
-        <Button
-            android:id="@+id/filesButton"
-            style="@style/Widget.CasdonLink.Button.Secondary"
-            android:layout_marginTop="@dimen/space_md"
-            android:text="文件管理" />
+            <Button
+                android:id="@+id/terminalButton"
+                style="@style/Widget.CasdonLink.Button.Primary"
+                android:layout_marginTop="@dimen/space_md"
+                android:text="交互终端" />
 
+            <Button
+                android:id="@+id/filesButton"
+                style="@style/Widget.CasdonLink.Button.Secondary"
+                android:layout_marginTop="@dimen/space_md"
+                android:text="文件管理" />
+        </LinearLayout>
+
+        <!-- 修复包是默认唯一开放的功能，不随完整功能开关隐藏。 -->
         <Button
             android:id="@+id/importPackageButton"
             style="@style/Widget.CasdonLink.Button.Secondary"
@@ -76,4 +87,3 @@
 
     </LinearLayout>
 </ScrollView>
-

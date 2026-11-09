@@ -3,15 +3,20 @@ package com.example.casdonlink
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -26,6 +31,7 @@ import com.example.casdonlink.connection.NetworkDiagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
+import com.example.casdonlink.data.FeatureGate
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -35,6 +41,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceStore: DeviceStore
     private lateinit var recentAdapter: RecentDeviceAdapter
     private var connecting = false
+    /** 标题区连击计数与上一次点击时间，用于识别隐藏的完整功能开关手势。 */
+    private var titleTapCount = 0
+    private var lastTitleTapAt = 0L
+    /** 正在显示的开启密码弹窗；显示期间忽略手势，避免连点余波重新触发。 */
+    private var fullModeDialog: AlertDialog? = null
+    /** 手势触发后的冷却截止时间，用来吞掉同一串连点中多出来的点击。 */
+    private var gestureCooldownUntil = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +59,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         deviceStore = DeviceStore(this)
+        setUpTitleGesture()
         setUpRecentDevices()
         renderRecentDevices()
         renderAboutInfo()
@@ -213,6 +227,75 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * 左上角标题区的隐藏手势：连续点击 [FeatureGate.TAP_COUNT] 下触发完整功能开关。
+     * 点击间隔超过 [FeatureGate.TAP_INTERVAL_MS] 会重新计数，避免日常点击被累积误触。
+     */
+    private fun setUpTitleGesture() {
+        findViewById<View>(R.id.mainTitle).setOnClickListener {
+            // 弹窗显示中或刚触发过手势时，忽略剩余点击，不重新累计。
+            if (fullModeDialog?.isShowing == true) return@setOnClickListener
+            val now = SystemClock.elapsedRealtime()
+            if (now < gestureCooldownUntil) {
+                titleTapCount = 0
+                return@setOnClickListener
+            }
+            if (now - lastTitleTapAt > FeatureGate.TAP_INTERVAL_MS) titleTapCount = 0
+            lastTitleTapAt = now
+            titleTapCount++
+            if (titleTapCount < FeatureGate.TAP_COUNT) return@setOnClickListener
+            titleTapCount = 0
+            gestureCooldownUntil = now + GESTURE_COOLDOWN_MS
+            toggleFullMode()
+        }
+    }
+
+    /** 已开启时直接关闭；未开启时先要求输入密码，校验通过才写入本机开关。 */
+    private fun toggleFullMode() {
+        if (FeatureGate.isFullModeEnabled(this)) {
+            FeatureGate.setFullModeEnabled(this, false)
+            showMessage("完整功能已关闭")
+            return
+        }
+        promptForFullMode()
+    }
+
+    private fun promptForFullMode() {
+        if (fullModeDialog?.isShowing == true) return
+        val view = layoutInflater.inflate(R.layout.dialog_input, null)
+        val input = view.findViewById<EditText>(R.id.dialogInput)
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        input.hint = "请输入开启密码"
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("开启完整功能")
+            .setView(view)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确认", null)
+            .create()
+        // 连点手势的第 7 下会落在弹窗外，默认会立即取消弹窗（屏幕闪黑一次），
+        // 这里禁止点击外部关闭，只能按「取消」或返回键退出。
+        dialog.setCanceledOnTouchOutside(false)
+        // 软键盘状态在 show 之前设定，避免弹窗已经可见后再改窗口参数造成重绘闪屏。
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.setOnShowListener {
+            // 覆盖默认监听，密码错误时保留弹窗以便重新输入。
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                if (input.text.toString() == FeatureGate.UNLOCK_PASSWORD) {
+                    FeatureGate.setFullModeEnabled(this, true)
+                    dialog.dismiss()
+                    showMessage("完整功能已开启")
+                } else {
+                    input.text.clear()
+                    input.error = "密码错误"
+                }
+            }
+            input.requestFocus()
+        }
+        dialog.setOnDismissListener { fullModeDialog = null }
+        fullModeDialog = dialog
+        dialog.show()
+    }
+
+    /**
      * 刷新最近设备列表。条目超过 [RECENT_VISIBLE_ROWS] 行时把列表高度固定为对应行数并在内部滚动，
      * 避免记录越攒越多把首页撑长；条目没超过时仍按内容自适应，不留下空白区域。
      */
@@ -307,5 +390,7 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         /** 最近设备列表在不滚动时最多展示的行数。 */
         const val RECENT_VISIBLE_ROWS = 3
+        /** 手势触发后的冷却时长，吞掉同一串连点中多出来的点击。 */
+        const val GESTURE_COOLDOWN_MS = 800L
     }
 }

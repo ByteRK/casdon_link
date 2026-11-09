@@ -8,19 +8,27 @@
 
     <LinearLayout style="@style/Widget.CasdonLink.Screen.ScrollContent">
 
-        <TextView
-            style="@style/Text.CasdonLink.Eyebrow"
-            android:text="CASDON LINK" />
+        <!-- 左上角标题区：整块承接完整功能的六连击手势，小屏上也有足够点击面积。 -->
+        <LinearLayout
+            android:id="@+id/mainTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-        <TextView
-            style="@style/Text.CasdonLink.HeroTitle"
-            android:layout_marginTop="@dimen/space_sm"
-            android:text="设备连接" />
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:text="CASDON LINK" />
 
-        <TextView
-            style="@style/Text.CasdonLink.Subtitle"
-            android:layout_marginTop="6dp"
-            android:text="局域网维护终端" />
+            <TextView
+                style="@style/Text.CasdonLink.HeroTitle"
+                android:layout_marginTop="@dimen/space_sm"
+                android:text="设备连接" />
+
+            <TextView
+                style="@style/Text.CasdonLink.Subtitle"
+                android:layout_marginTop="6dp"
+                android:text="局域网维护终端" />
+        </LinearLayout>
 
         <LinearLayout
             style="@style/Widget.CasdonLink.Card"

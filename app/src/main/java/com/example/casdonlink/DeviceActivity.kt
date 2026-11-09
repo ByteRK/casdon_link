@@ -2,6 +2,7 @@ package com.example.casdonlink
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -9,9 +10,11 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
+import com.example.casdonlink.data.FeatureGate
 import com.example.casdonlink.device.DeviceRepository
 import com.example.casdonlink.ui.applyDarkSystemBars
 import kotlinx.coroutines.launch
@@ -45,6 +48,7 @@ class DeviceActivity : AppCompatActivity() {
         session = active
         findViewById<TextView>(R.id.deviceTitle).text = DeviceSessionHolder.host
         renderConnectionState("连接正常")
+        applyFeatureGate()
 
         findViewById<Button>(R.id.refreshStatusButton).setOnClickListener { loadStatus(showToast = true) }
         findViewById<Button>(R.id.terminalButton).setOnClickListener {
@@ -160,6 +164,14 @@ class DeviceActivity : AppCompatActivity() {
         super.onResume()
         // 从系统文件选择器等页面返回时，后台期间的连接可能已被中止，先确认并按需恢复。
         if (!closing && !DeviceSessionHolder.isActive()) recoverSession(showToast = true)
+    }
+
+    /**
+     * 默认只开放「修复包」；交互终端、文件管理等高级操作需要先在首页用手势
+     * 开启完整功能。受限控件统一放在 advancedActions 容器里，新增功能只需加入该容器。
+     */
+    private fun applyFeatureGate() {
+        findViewById<View>(R.id.advancedActions).isVisible = FeatureGate.isFullModeEnabled(this)
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
