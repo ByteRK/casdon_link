@@ -1,6 +1,6 @@
 package com.example.casdonlink
 
-import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -20,6 +20,7 @@ import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.packages.PackageImporter
 import com.example.casdonlink.packages.RepairStep
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -105,7 +106,7 @@ class PackageActivity : AppCompatActivity() {
                 is RepairStep.Shell -> step.command
             }
         }.joinToString("\n")
-        AlertDialog.Builder(this).setTitle("确认执行 ${pkg.manifest.name}？").setMessage(summary)
+        MaterialAlertDialogBuilder(this).setTitle("确认执行 ${pkg.manifest.name}？").setMessage(summary)
             .setNegativeButton("取消", null).setPositiveButton("执行") { _, _ -> runPackage() }.show()
     }
 

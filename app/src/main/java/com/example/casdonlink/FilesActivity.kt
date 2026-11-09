@@ -1,6 +1,5 @@
 package com.example.casdonlink
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -11,11 +10,13 @@ import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
-import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.ContextThemeWrapper
+import androidx.appcompat.widget.PopupMenu
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -26,6 +27,7 @@ import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.files.PhoneHttpServer
 import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.formatByteSize
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -152,7 +154,9 @@ class FilesActivity : AppCompatActivity() {
     /** 浮空按钮弹出的操作菜单：当前目录下可执行的动作都在这里。返回上一页面由左上角按钮负责。 */
     private fun showActionMenu(anchor: View) {
         val actions = listOf("新建文件", "新建文件夹", "上传文件")
-        PopupMenu(this, anchor).apply {
+        // 套用悬浮菜单主题，避免使用系统浅色菜单破坏深色页面风格。
+        val themed = ContextThemeWrapper(this, R.style.ThemeOverlay_CasdonLink_PopupMenu)
+        PopupMenu(themed, anchor).apply {
             actions.forEach { menu.add(it) }
             setOnMenuItemClickListener { item ->
                 when (item.title.toString()) {
@@ -169,8 +173,11 @@ class FilesActivity : AppCompatActivity() {
     /** 在当前目录创建空文件或目录；名称在这里校验，避免把非法字符传给设备 shell。 */
     private fun promptCreate(directory: Boolean) {
         val title = if (directory) "新建文件夹" else "新建文件"
-        val field = EditText(this).apply { hint = if (directory) "文件夹名称" else "文件名" }
-        AlertDialog.Builder(this).setTitle(title).setMessage(path).setView(field)
+        val content = layoutInflater.inflate(R.layout.dialog_input, null)
+        val field = content.findViewById<EditText>(R.id.dialogInput).apply {
+            hint = if (directory) "文件夹名称" else "文件名"
+        }
+        MaterialAlertDialogBuilder(this).setTitle(title).setMessage(path).setView(content)
             .setNegativeButton("取消", null)
             .setPositiveButton("创建") { _, _ ->
                 val name = field.text.toString().trim()
@@ -215,7 +222,7 @@ class FilesActivity : AppCompatActivity() {
         val targets = ancestors.reversed().filter { it != path }
         val items = mutableListOf("返回设备状态页")
         items += targets.map { if (it == "/") "根目录 /" else it }
-        AlertDialog.Builder(this).setTitle(path).setItems(items.toTypedArray()) { _, which ->
+        MaterialAlertDialogBuilder(this).setTitle(path).setItems(items.toTypedArray()) { _, which ->
             if (which == 0) exitToDevice() else load(targets[which - 1])
         }.show()
     }
@@ -224,10 +231,10 @@ class FilesActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val text = repository().readText(file.path)
-                AlertDialog.Builder(this@FilesActivity).setTitle(file.name)
+                MaterialAlertDialogBuilder(this@FilesActivity).setTitle(file.name)
                     .setMessage(text.take(8_000)).setPositiveButton("关闭", null).show()
             } catch (_: Exception) {
-                AlertDialog.Builder(this@FilesActivity).setTitle(file.name).setMessage("无法作为文本打开")
+                MaterialAlertDialogBuilder(this@FilesActivity).setTitle(file.name).setMessage("无法作为文本打开")
                     .setPositiveButton("下载", null).show()
             }
         }
@@ -236,7 +243,7 @@ class FilesActivity : AppCompatActivity() {
     private fun showActions(file: DeviceFile) {
         val actions = mutableListOf("重命名", "删除")
         if (!file.directory) actions += "下载"
-        AlertDialog.Builder(this).setTitle(file.name).setItems(actions.toTypedArray()) { _, which ->
+        MaterialAlertDialogBuilder(this).setTitle(file.name).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
                 "重命名" -> rename(file)
                 "删除" -> confirmDelete(file)
@@ -246,8 +253,9 @@ class FilesActivity : AppCompatActivity() {
     }
 
     private fun rename(file: DeviceFile) {
-        val field = EditText(this).apply { setText(file.name) }
-        AlertDialog.Builder(this).setTitle("重命名").setView(field).setNegativeButton("取消", null)
+        val content = layoutInflater.inflate(R.layout.dialog_input, null)
+        val field = content.findViewById<EditText>(R.id.dialogInput).apply { setText(file.name) }
+        MaterialAlertDialogBuilder(this).setTitle("重命名").setView(content).setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
                 val newName = field.text.toString().trim()
                 validateName(newName)?.let { toast(it); return@setPositiveButton }
@@ -259,7 +267,7 @@ class FilesActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(file: DeviceFile) {
-        AlertDialog.Builder(this).setTitle("删除文件？").setMessage(file.path)
+        MaterialAlertDialogBuilder(this).setTitle("删除文件？").setMessage(file.path)
             .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ ->
                 lifecycleScope.launch {
                     runCatching { repository().delete(file.path) }.onSuccess { load(path) }
@@ -366,7 +374,7 @@ class FilesActivity : AppCompatActivity() {
     private fun showTransferProgress(title: String): TransferProgressUi {
         val view = layoutInflater.inflate(R.layout.dialog_transfer_progress, null)
         view.findViewById<TextView>(R.id.transferTitle).text = title
-        val dialog = AlertDialog.Builder(this)
+        val dialog = MaterialAlertDialogBuilder(this)
             .setView(view)
             .setNegativeButton("取消", null)
             .setCancelable(false)

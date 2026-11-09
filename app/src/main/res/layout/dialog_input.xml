@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 单输入框弹窗内容：复用页面输入框样式，保持在对话框中也与表单一致。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="@dimen/space_2xl"
+    android:paddingTop="@dimen/space_sm"
+    android:paddingEnd="@dimen/space_2xl"
+    android:paddingBottom="@dimen/space_xs">
+
+    <EditText
+        android:id="@+id/dialogInput"
+        style="@style/Widget.CasdonLink.EditText" />
+
+</FrameLayout>

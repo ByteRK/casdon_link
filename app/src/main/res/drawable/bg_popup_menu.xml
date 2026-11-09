@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮菜单背景：与卡片同一语义色与描边，内边距用于让首尾行的水波纹不越过圆角。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/surface" />
+    <stroke android:width="1dp" android:color="@color/card_stroke" />
+    <corners android:radius="16dp" />
+    <padding
+        android:left="6dp"
+        android:top="6dp"
+        android:right="6dp"
+        android:bottom="6dp" />
+</shape>

@@ -136,6 +136,8 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
   - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。
   - 按钮：`Button.Primary`（主操作）、`Button.Secondary`（次操作）、`Button.Small`（小号次操作）、`Button.Danger`（危险操作）、`Button.Icon`（返回符号）、`Button.Inline`（行内固定宽度）。
   - 输入：`EditText`、`EditText.Port`。
+  - 弹窗：统一用 `MaterialAlertDialogBuilder`，主题为 `ThemeOverlay.CasdonLink.MaterialAlertDialog`（深色表面、20dp 圆角、语义文字色）；输入类弹窗内容用 `dialog_input.xml`，长文本用 `dialog_text.xml`。
+  - 悬浮菜单：主题为 `ThemeOverlay.CasdonLink.PopupMenu`，控件样式为 `Widget.CasdonLink.PopupMenu`，背景 `bg_popup_menu` 与卡片同色同描边。
 
-新建页面的做法：根布局用 `Widget.CasdonLink.Screen.*`，标题栏用 `Widget.CasdonLink.Toolbar`，卡片用 `Card`，按钮只从上述按钮样式里选。需要局部差异时在布局中写少量覆盖属性，跨页面复用的差异则新增子样式（例如 `Button.Secondary.Wide`），不要在多个布局里重复同一组属性。列表行统一使用独立 `row_*.xml`，代码只负责绑定数据和事件，不得在 Kotlin 中拼装样式。
+新建页面的做法：根布局用 `Widget.CasdonLink.Screen.*`，标题栏用 `Widget.CasdonLink.Toolbar`，卡片用 `Card`，按钮只从上述按钮样式里选。需要局部差异时在布局中写少量覆盖属性，跨页面复用的差异则新增子样式（例如 `Button.Secondary.Wide`），不要在多个布局里重复同一组属性。列表行统一使用独立 `row_*.xml`，代码只负责绑定数据和事件，不得在 Kotlin 中拼装样式。弹窗与菜单也必须走上述主题，不要直接使用 `android.app.AlertDialog` 或默认 `PopupMenu`，否则会跟随系统浅色主题而与页面割裂。
 

@@ -8,7 +8,61 @@
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:windowBackground">@color/background</item>
+        <!-- 弹窗固定使用深色表面，避免跟随系统浅色主题后与页面割裂。 -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.CasdonLink.MaterialAlertDialog</item>
+        <item name="android:backgroundDimAmount">0.65</item>
     </style>
 
     <style name="Theme.CasdonLink" parent="Base.Theme.CasdonLink" />
+
+
+    <!-- ==================== 弹窗主题 ==================== -->
+
+    <style name="ThemeOverlay.CasdonLink.MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.CasdonLink</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.CasdonLink.Title.Text</item>
+        <item name="materialAlertDialogBodyTextStyle">@style/MaterialAlertDialog.CasdonLink.Body.Text</item>
+    </style>
+
+    <!-- 弹窗主体：深色表面 + 与卡片一致的 20dp 圆角。 -->
+    <style name="MaterialAlertDialog.CasdonLink" parent="MaterialAlertDialog.Material3">
+        <item name="backgroundTint">@color/surface</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.CasdonLink.Dialog</item>
+    </style>
+
+    <style name="MaterialAlertDialog.CasdonLink.Title.Text" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_section_title</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="MaterialAlertDialog.CasdonLink.Body.Text" parent="MaterialAlertDialog.Material3.Body.Text">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_body</item>
+    </style>
+
+
+    <!-- ==================== 悬浮菜单主题 ==================== -->
+
+    <style name="ThemeOverlay.CasdonLink.PopupMenu" parent="ThemeOverlay.Material3.Dark">
+        <item name="popupMenuStyle">@style/Widget.CasdonLink.PopupMenu</item>
+        <item name="android:popupMenuStyle">@style/Widget.CasdonLink.PopupMenu</item>
+        <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.CasdonLink.PopupMenu</item>
+        <item name="android:textAppearanceLargePopupMenu">@style/TextAppearance.CasdonLink.PopupMenu</item>
+    </style>
 </resources>

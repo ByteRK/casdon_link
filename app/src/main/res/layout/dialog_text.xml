@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长文本弹窗内容：等宽字体便于阅读日志与诊断信息，可长按选择复制。 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="@dimen/space_2xl"
+    android:paddingTop="@dimen/space_sm"
+    android:paddingEnd="@dimen/space_2xl"
+    android:paddingBottom="@dimen/space_sm">
+
+    <TextView
+        android:id="@+id/dialogText"
+        style="@style/Text.CasdonLink.Mono"
+        android:textIsSelectable="true" />
+
+</ScrollView>

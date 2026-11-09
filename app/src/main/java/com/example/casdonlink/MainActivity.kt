@@ -8,11 +8,9 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -22,6 +20,7 @@ import com.example.casdonlink.connection.NetworkDiagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.DeviceRecord
 import com.example.casdonlink.data.DeviceStore
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -164,18 +163,13 @@ class MainActivity : AppCompatActivity() {
         showTextDialog(title, body)
     }
 
-    /** 通用文本展示弹窗，支持一键复制。 */
+    /** 通用文本展示弹窗，支持一键复制。内容样式统一由 dialog_text.xml 维护。 */
     private fun showTextDialog(title: String, body: String) {
-        val text = TextView(this).apply {
-            this.text = body
-            textSize = 11f
-            setTextIsSelectable(true)
-            setPadding(36, 24, 36, 24)
-        }
-        val scroll = ScrollView(this).apply { addView(text) }
-        AlertDialog.Builder(this)
+        val view = layoutInflater.inflate(R.layout.dialog_text, null)
+        view.findViewById<TextView>(R.id.dialogText).text = body
+        MaterialAlertDialogBuilder(this)
             .setTitle(title)
-            .setView(scroll)
+            .setView(view)
             .setPositiveButton("复制") { _, _ ->
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink $title", body))
@@ -227,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             if (record.hasPassword) add("清除已保存密码")
             add("删除记录")
         }
-        AlertDialog.Builder(this).setTitle(label).setItems(actions.toTypedArray()) { _, which ->
+        MaterialAlertDialogBuilder(this).setTitle(label).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
                 "清除已保存密码" -> {
                     deviceStore.save(record.copy(password = ""))
