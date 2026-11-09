@@ -143,6 +143,7 @@ class FilesActivity : AppCompatActivity() {
 
     private fun upload(uri: Uri) {
         lifecycleScope.launch {
+            val targetName = displayName(uri)
             val temp = File(cacheDir, "upload_${System.currentTimeMillis()}")
             try {
                 withContext(Dispatchers.IO) { contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use(input::copyTo) } }
@@ -150,11 +151,25 @@ class FilesActivity : AppCompatActivity() {
                 activeHttpServer = server
                 val host = LocalAddress.find(this@FilesActivity) ?: throw IllegalStateException("无法识别本机局域网地址")
                 val url = server.start(host)
-                repository.uploadFromHttp(url, "$path/${temp.nameWithoutExtension}")
+                repository.uploadFromHttp(url, path.trimEnd('/') + "/" + targetName)
                 toast("传输完成")
                 load(path)
             } catch (error: Exception) { toast(error.message ?: "上传失败") }
             finally { activeHttpServer?.close(); activeHttpServer = null; temp.delete() }
+        }
+    }
+
+    /** 读取系统文件选择器提供的显示名，作为设备端保存名；失败时退回时间戳名称。 */
+    private fun displayName(uri: Uri): String {
+        val raw = runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull()
+        val name = raw?.substringAfterLast('/')?.trim()?.replace(Regex("[\\u0000-\\u001f]"), "")
+        return if (name.isNullOrBlank() || name == "." || name == "..") {
+            "upload_${System.currentTimeMillis()}.bin"
+        } else {
+            name
         }
     }
 
