@@ -165,8 +165,9 @@ class FileRepository(private val session: TelnetClient.Session) {
                 transferOnce(url, part, marker, totalBytes, isCancelled, onProgress)
                 // 校验放在替换之前：续传拼接出的字节若不一致，绝不覆盖设备上的原文件。
                 verifyTransfer(part, totalBytes, expectedSha256)
-                session.execute("mv -f ${quote(part)} ${quote(target)}")
+                // totalBytes 未知时要在 mv 之前读半成品大小；mv 之后 part 已不存在。
                 val done = if (totalBytes > 0) totalBytes else remoteSize(part)
+                session.execute("mv -f ${quote(part)} ${quote(target)}")
                 onProgress(done, done)
                 runCatching { session.execute("rm -f ${quote(marker)}", timeoutMs = 5_000) }
                 return

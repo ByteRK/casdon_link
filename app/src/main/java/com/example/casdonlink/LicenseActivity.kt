@@ -176,7 +176,8 @@ class LicenseActivity : AppCompatActivity() {
                     append("\nLicense · ").append(LicenseText.mask(currentLicense!!.license))
                 }
             }
-            else -> "已存在授权文件，但无法按规则解析：\n${currentLicenseRaw.take(500)}"
+            // 不展示原始内容：旧格式/规则不匹配时文件里可能含完整 License，界面不应泄露。
+            else -> "已存在授权文件，但无法按机型规则解析。\n请确认设备型号、PID 与授权文件格式是否匹配。"
         }
         val warning = if (currentLicense != null && currentLicense!!.pid != license.pid) {
             "\n\n警告：当前授权 PID 与规则不一致，请确认设备铭牌后再覆盖。"

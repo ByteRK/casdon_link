@@ -230,14 +230,16 @@ class QuickActionsActivity : AppCompatActivity() {
 
     private fun showResult(title: String, content: String) {
         val view = layoutInflater.inflate(R.layout.dialog_text, null)
-        view.findViewById<TextView>(R.id.dialogText).text = content.take(20_000)
+        // 设备端 ls/echo 可能带颜色控制序列（如 ESC[0;0m），直接显示会变成乱码。
+        val clean = content.replace(ANSI_ESCAPE, "").take(20_000)
+        view.findViewById<TextView>(R.id.dialogText).text = clean
         MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(view)
             .setNegativeButton("关闭", null)
             .setPositiveButton("复制") { _, _ ->
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink $title", content))
+                clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink $title", clean))
                 toast("已复制到剪贴板")
             }
             .show()
@@ -335,5 +337,6 @@ class QuickActionsActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PROFILE_ID = "profile_id"
+        private val ANSI_ESCAPE = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
     }
 }
