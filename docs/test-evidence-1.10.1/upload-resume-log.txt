@@ -1,0 +1,11 @@
+11-11 06:19:03.996 22211 23481 I CasdonLink: 06:19:03.996 上传服务端收到 GET /upload_1794349143687（38 字节，range=无）
+11-11 06:19:04.185 22211 22718 I CasdonLink: 06:19:04.185 发送：printf '\n%s%s\n' '__CL_BEGIN_' '90710f1dbbd645939348794d050a9386__'; mv -f '/userdata/upload_test.txt.casdonpart' '/userdata/upload_test.txt'; printf '\n%s%s:%s\n' '__CL_DONE_' '90710f1dbbd645939348794d050a9386__' "$?"\n
+11-11 06:21:11.995 23059 24835 I CasdonLink: 06:21:11.994 上传服务端收到 GET /test.bin（1048576 字节，range=无）
+11-11 06:21:13.332 23059 24448 I CasdonLink: 06:21:13.331 发送：printf '\n%s%s\n' '__CL_BEGIN_' '063af056c9044017beb739dc233a91ba__'; sha256sum '/userdata/pkg_test.bin.casdonpart' 2>/dev/null; printf '\n%s%s:%s\n' '__CL_DONE_' '063af056c9044017beb739dc233a91ba__' "$?"\n
+11-11 06:21:13.419 23059 24448 I CasdonLink: 06:21:13.418 发送：printf '\n%s%s\n' '__CL_BEGIN_' 'a6bb7d00f4714893817832e5d1eb15f1__'; mv -f '/userdata/pkg_test.bin.casdonpart' '/userdata/pkg_test.bin'; printf '\n%s%s:%s\n' '__CL_DONE_' 'a6bb7d00f4714893817832e5d1eb15f1__' "$?"\n
+11-11 06:21:40.175 23059 24995 I CasdonLink: 06:21:40.175 上传服务端收到 GET /test.bin（1048576 字节，range=Partial(start=524288, end=1048575)）
+11-11 06:21:41.594 23059 24448 I CasdonLink: 06:21:41.593 发送：printf '\n%s%s\n' '__CL_BEGIN_' 'aa0e553aae554a608dc3cef271cfe048__'; sha256sum '/userdata/pkg_test.bin.casdonpart' 2>/dev/null; printf '\n%s%s:%s\n' '__CL_DONE_' 'aa0e553aae554a608dc3cef271cfe048__' "$?"\n
+11-11 06:21:41.876 23059 23059 I CasdonLink: 06:21:41.876 上传失败（第 1/3 次）：/userdata/pkg_test.bin · 内容校验失败（sha256 不一致）
+11-11 06:21:43.536 23059 24995 I CasdonLink: 06:21:43.535 上传服务端收到 GET /test.bin（1048576 字节，range=无）
+11-11 06:21:44.885 23059 24448 I CasdonLink: 06:21:44.884 发送：printf '\n%s%s\n' '__CL_BEGIN_' '1b30401ad01a41269995e68da506a485__'; sha256sum '/userdata/pkg_test.bin.casdonpart' 2>/dev/null; printf '\n%s%s:%s\n' '__CL_DONE_' '1b30401ad01a41269995e68da506a485__' "$?"\n
+11-11 06:21:44.992 23059 24450 I CasdonLink: 06:21:44.991 发送：printf '\n%s%s\n' '__CL_BEGIN_' '4f20623db5ee46179021d3b9c5a1a9d8__'; mv -f '/userdata/pkg_test.bin.casdonpart' '/userdata/pkg_test.bin'; printf '\n%s%s:%s\n' '__CL_DONE_' '4f20623db5ee46179021d3b9c5a1a9d8__' "$?"\n
