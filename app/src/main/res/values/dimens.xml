@@ -38,6 +38,9 @@
     <dimen name="step_dot_size">10dp</dimen>
     <!-- 最近设备行：固定高度 + 单行文本，便于按行数限制列表可视高度。 -->
     <dimen name="recent_device_row_height">56dp</dimen>
+    <!-- 机型徽标：紧邻设备 IP，名称过长时省略。 -->
+    <dimen name="badge_height">26dp</dimen>
+    <dimen name="badge_max_width">150dp</dimen>
 
     <!-- 字号 -->
     <dimen name="text_caption">12sp</dimen>

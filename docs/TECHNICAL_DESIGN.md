@@ -20,7 +20,8 @@ Android App 在与嵌入式 Linux 设备同一局域网时，通过内置 Telnet
 | `device` | 状态采集命令、输出解析、设备信息模型 |
 | `files` | 目录浏览、文本查看、文件操作及传输策略 |
 | `package` | ZIP 导入、清单校验、路径安全校验、步骤计划与执行状态 |
-| `storage` | 本地设备记录与用户选择的修复包元数据；不保存操作历史 |
+| `profile` | 机型规则加载、只读文件探测、优先级匹配、授权文件模板与快捷动作模型 |
+| `storage` | 本地设备记录、修复包元数据与授权操作记录；不保存 shell 命令历史 |
 
 界面依赖 repository/use-case 接口，不直接操作 Socket、文件协议或 ZIP。设备记录采用本地持久化；密码功能当前不需要。所有网络 IO 放在后台协程/执行器，并由统一连接会话串行调度，避免并发命令相互混淆。Activity 生命周期变化时明确管理连接提示及关闭策略。
 
@@ -184,4 +185,78 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 - 一次提交（或一批改动）只递增一次，按其中最高级别计；例如同时修 bug 和加功能，走 `MINOR`。
 - 版本号只在 `app/build.gradle.kts` 顶部维护：`appMajor`/`appMinor`/`appPatch` 三个常量，`versionName` 与 `versionCode` 都由它们派生（`versionCode = MAJOR*10000 + MINOR*100 + PATCH`），不要直接写 `versionName` 字符串。这样首页页脚、APK 产物名（`CasdonLink_<buildType>_V<版本名>_<时间戳>.apk`）会同步更新。
 - 首个三段式基线为 `1.1.0`：`1.0` 时代的两位版本号补齐为三段，并把在此之后累计的新功能（最近设备列表、首页页脚、系统栏修复等）计入 `MINOR`。
+
+## 12. 机型规则、补发授权码与快捷操作（1.8.0）
+
+### 12.1 目标与边界
+
+设备页在连接后自动识别机型，命中规则时在 IP 旁显示机型名，并提供“补发授权码”和“快捷操作”。规则随 APK 内置在 `assets/profiles.json`，当前不开放外部导入；后续如需签名导入，可复用解析校验层并增加来源与版本字段。
+
+识别只使用**只读文件检查**（`test -e/-f/-x`），规则里不写 shell 命令。这样即使规则文件泄露或被替换，也不会在连接阶段自动执行任意命令。
+
+### 12.2 规则模型
+
+一条规则包含：
+
+- `id`、`name`、`priority`：唯一标识、显示名和冲突时的优先级。
+- `match.all`/`match.none`：路径存在性条件；`all` 必须非空，避免规则变成“匹配所有设备”。
+- `license`：`pid`、`networkInterface`、`targetPath`、`contentTemplate`（必须含 `{{pid}}`/`{{did}}`/`{{license}}`）、`read` 正则（PID/DID/License 至少各一个捕获组）。
+- `quickActions`：分组动作，每条动作可含一串命令，支持 `confirm`/`danger`/`output`/`timeoutSeconds`/`continueOnError`/`reboot`。
+
+加载时逐条校验，任何字段非法就跳过该规则并写诊断日志。多个规则同时命中时按 `priority` 选择，并在机型详情里提示冲突。
+
+内置规则当前覆盖：
+
+| 机型 | 应用二进制 | PID | 授权文件 |
+| --- | --- | --- | --- |
+| Z200Muse | `/userdata/app/Z200Muse` | `VTrRZRWy` | `/userdata/devices.xml` |
+| 旗舰烟机 YV100 | `/userdata/app/yv100` | `U7H9Vi6d` | `/userdata/license.txt` |
+| 旗舰烟机 YT100 | `/userdata/app/yt100` | `Otc9AWgB` | `/userdata/license.txt` |
+| 台式微蒸烤 B10 Pro | `/userdata/app/b10pro` | `vfIS2vgn` | `/userdata/license.txt` |
+
+### 12.3 识别
+
+连接后把全部规则的路径检查合并成一次 `execute`，输出 `CLP<index>=1/0`，避免逐条命令往返。识别在后台协程执行，不阻塞终端、文件和修复包。结果为：
+
+- 识别中；已匹配（显示规则名）；未知机型；识别失败（可重试）。
+- 完整功能模式下可手动选择机型，徽标显示“手动 · 机型名”，授权确认仍需核对 PID。
+- 徽标点击展示规则详情，包括 PID、网卡、授权路径、命中条件和冲突提示。
+
+### 12.4 补发授权码
+
+独立页面 `LicenseActivity` 负责完整流程：
+
+1. 读取 `/sys/class/net/<网卡>/address` 和当前授权文件；文件不存在显示“未授权”。
+2. 展示机型、PID、MAC、目标路径和当前 PID/DID；要求勾选“已核对设备铭牌与 PID 一致”。
+3. 向 `MacToAuthCode` 的 `POST /api/device/authorize` 发送 `{pid, mac}`。服务端对同一 PID+MAC 幂等，`mode=reused` 表示复用原授权，失败 409 时展示服务端文案。
+4. 用模板生成授权文件，`base64 -d` 写入目标路径；写命令走 `execute(secret = true)`，授权码不进入诊断日志。
+5. `cat` 读回校验 PID/DID/License，`sync` 后发送 `sync; reboot`。
+6. 重启前记录 `/proc/sys/kernel/random/boot_id`；重连后必须看到不同 boot_id，才认为设备真正重启完成。
+7. 旧 socket 在 reboot 后可能仍保持打开但已不响应，`reconnectAfterReboot` 会主动关闭旧会话，只接受新握手，避免提前显示成功。
+8. 若设备更换 IP，无法自动找回；等待超时后提示“可能已更换 IP，请重新连接”。
+
+服务端地址以 XOR 字节数组存放并在运行时还原，避免明文出现在源码/资源中；这只能提高静态扫描门槛，不是安全边界。debug 构建可用 `-PauthBaseUrl=http://<host>:<port>` 指向本地平台，release 始终使用内置生产地址。
+
+### 12.5 授权记录与导出
+
+`LicenseHistoryStore` 在 `filesDir/license_records.json` 保存最近 200 条记录：时间、地址、机型、PID、MAC、DID、授权码、模式、目标路径、结果、错误信息、App 版本。授权码用 Android Keystore 加密后落盘；导出 JSON 时还原完整字段，导出文件按敏感文件管理。
+
+记录在申请前创建，随后更新为“已分配/已写入/成功/失败”；应用中途被杀也能看到最后一次状态。授权页提供“导出授权记录”，通过系统文件选择器保存 `CasdonLink_license_records_<时间>.json`。
+
+### 12.6 快捷操作
+
+`QuickActionsActivity` 按规则分组展示动作，仅完整功能模式可见。执行规则：
+
+- 全局串行、执行中禁用入口；危险动作二次确认。
+- 命令队列逐条执行，默认失败停止；`continueOnError` 可继续。
+- 输出超过规则阈值或用户要求时弹窗展示，可复制；页面底部显示状态与“停止”（当前命令结束后停止后续）。
+- `reboot` 动作复用授权页的重启等待逻辑（boot_id 校验）。
+- 快捷操作不替代交互终端：自由 shell 输入仍在终端页完成。
+
+### 12.7 当前限制
+
+- 规则只内置，新增机型需要随 APK 发版；签名导入尚未实现。
+- 设备重启后若 DHCP 更换 IP，App 无法自动发现，只能提示用户重新连接。
+- 授权记录中的完整授权码会随用户主动导出而离开本机，页面已提示按敏感文件保管。
+- 快捷操作只执行规则内置命令队列，不支持运行时参数输入。
 

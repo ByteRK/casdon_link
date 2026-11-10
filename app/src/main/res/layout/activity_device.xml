@@ -11,12 +11,29 @@
             style="@style/Text.CasdonLink.Eyebrow"
             android:text="已连接设备" />
 
-        <TextView
-            android:id="@+id/deviceTitle"
-            style="@style/Text.CasdonLink.ScreenTitle"
+        <!-- 标题行：IP 占剩余宽度，右侧显示命中的机型规则；未知机型也在这里显示。 -->
+        <LinearLayout
             android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_sm"
-            tools:text="172.16.241.28" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/deviceTitle"
+                style="@style/Text.CasdonLink.ScreenTitle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                tools:text="172.16.241.28" />
+
+            <TextView
+                android:id="@+id/profileBadge"
+                style="@style/Widget.CasdonLink.Badge"
+                android:layout_marginStart="@dimen/space_sm"
+                android:contentDescription="机型规则"
+                android:visibility="gone"
+                tools:text="Z200Muse" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/deviceState"
@@ -43,6 +60,33 @@
                 style="@style/Widget.CasdonLink.Button.Small"
                 android:layout_marginTop="14dp"
                 android:text="刷新状态" />
+        </LinearLayout>
+
+        <!-- 机型操作：只在该设备命中规则时出现；补发授权码不受完整功能开关限制。 -->
+        <LinearLayout
+            android:id="@+id/profileActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/Text.CasdonLink.SectionTitle"
+                android:layout_marginTop="@dimen/space_2xl"
+                android:text="机型操作" />
+
+            <Button
+                android:id="@+id/licenseButton"
+                style="@style/Widget.CasdonLink.Button.Secondary"
+                android:layout_marginTop="@dimen/space_md"
+                android:text="补发授权码" />
+
+            <Button
+                android:id="@+id/quickActionsButton"
+                style="@style/Widget.CasdonLink.Button.Secondary"
+                android:layout_marginTop="@dimen/space_md"
+                android:text="快捷操作"
+                android:visibility="gone" />
         </LinearLayout>
 
         <TextView

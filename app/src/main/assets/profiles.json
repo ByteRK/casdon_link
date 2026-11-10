@@ -1,0 +1,137 @@
+{
+  "formatVersion": 1,
+  "profiles": [
+    {
+      "id": "z200muse",
+      "name": "Z200Muse",
+      "priority": 100,
+      "match": {
+        "all": [
+          { "path": "/userdata/app/Z200Muse", "op": "EXECUTABLE" }
+        ],
+        "none": []
+      },
+      "license": {
+        "pid": "VTrRZRWy",
+        "networkInterface": "wlan0",
+        "targetPath": "/userdata/devices.xml",
+        "contentTemplate": "<sections>\n<section name=\"app_config\">\n<item name=\"DeviceId\">{{did}}</item>\n<item name=\"License\">{{license}}</item>\n<item name=\"ProductId\">{{pid}}</item>\n</section>\n</sections>",
+        "read": {
+          "pidPattern": "<item name=\"ProductId\">([^<]*)</item>",
+          "didPattern": "<item name=\"DeviceId\">([^<]*)</item>",
+          "licensePattern": "<item name=\"License\">([^<]*)</item>"
+        }
+      },
+      "quickActions": [
+        {
+          "title": "调试操作",
+          "actions": [
+            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
+            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
+            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
+            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yv100",
+      "name": "旗舰烟机 YV100",
+      "priority": 100,
+      "match": {
+        "all": [
+          { "path": "/userdata/app/yv100", "op": "EXECUTABLE" }
+        ],
+        "none": []
+      },
+      "license": {
+        "pid": "U7H9Vi6d",
+        "networkInterface": "wlan0",
+        "targetPath": "/userdata/license.txt",
+        "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
+        "read": {
+          "pidPattern": "<item name=\"pid\">([^<]*)</item>",
+          "didPattern": "<item name=\"uuid\">([^<]*)</item>",
+          "licensePattern": "<item name=\"key\">([^<]*)</item>"
+        }
+      },
+      "quickActions": [
+        {
+          "title": "调试操作",
+          "actions": [
+            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
+            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
+            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
+            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yt100",
+      "name": "旗舰烟机 YT100",
+      "priority": 100,
+      "match": {
+        "all": [
+          { "path": "/userdata/app/yt100", "op": "EXECUTABLE" }
+        ],
+        "none": []
+      },
+      "license": {
+        "pid": "Otc9AWgB",
+        "networkInterface": "wlan0",
+        "targetPath": "/userdata/license.txt",
+        "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
+        "read": {
+          "pidPattern": "<item name=\"pid\">([^<]*)</item>",
+          "didPattern": "<item name=\"uuid\">([^<]*)</item>",
+          "licensePattern": "<item name=\"key\">([^<]*)</item>"
+        }
+      },
+      "quickActions": [
+        {
+          "title": "调试操作",
+          "actions": [
+            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
+            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
+            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
+            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "b10pro",
+      "name": "台式微蒸烤 B10 Pro",
+      "priority": 100,
+      "match": {
+        "all": [
+          { "path": "/userdata/app/b10pro", "op": "EXECUTABLE" }
+        ],
+        "none": []
+      },
+      "license": {
+        "pid": "vfIS2vgn",
+        "networkInterface": "wlan0",
+        "targetPath": "/userdata/license.txt",
+        "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
+        "read": {
+          "pidPattern": "<item name=\"pid\">([^<]*)</item>",
+          "didPattern": "<item name=\"uuid\">([^<]*)</item>",
+          "licensePattern": "<item name=\"key\">([^<]*)</item>"
+        }
+      },
+      "quickActions": [
+        {
+          "title": "调试操作",
+          "actions": [
+            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
+            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
+            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
+            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/licenseRoot"
+    style="@style/Widget.CasdonLink.Screen.Column"
+    tools:context=".LicenseActivity">
+
+    <LinearLayout style="@style/Widget.CasdonLink.Toolbar">
+
+        <Button
+            android:id="@+id/licenseBack"
+            style="@style/Widget.CasdonLink.Button.Icon"
+            android:contentDescription="返回设备页"
+            android:text="‹" />
+
+        <TextView
+            android:id="@+id/licenseTitle"
+            style="@style/Text.CasdonLink.ToolbarTitle"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:text="补发授权码" />
+
+        <TextView
+            android:id="@+id/licenseToolbarStatus"
+            style="@style/Text.CasdonLink.Caption" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="@dimen/screen_padding_bottom">
+
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:text="机型操作" />
+
+            <TextView
+                android:id="@+id/licenseDevice"
+                style="@style/Text.CasdonLink.MultilineBody"
+                android:layout_marginTop="@dimen/space_sm"
+                tools:text="机型 · Z200Muse\nPID · VTrRZRWy" />
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="当前授权" />
+
+                <TextView
+                    android:id="@+id/licenseCurrent"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp"
+                    tools:text="未授权（设备上不存在授权文件）" />
+            </LinearLayout>
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="操作" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="10dp"
+                    android:text="补发会向授权服务申请授权码、写入设备并重启。请核对机型、PID 和目标文件；已存在的授权会被覆盖。" />
+
+                <CheckBox
+                    android:id="@+id/licenseConfirm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:buttonTint="@color/secondary"
+                    android:text="我已核对设备铭牌与 PID 一致"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_body" />
+
+                <Button
+                    android:id="@+id/licenseStart"
+                    style="@style/Widget.CasdonLink.Button.Primary"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:enabled="false"
+                    android:text="开始补发" />
+
+                <ProgressBar
+                    android:id="@+id/licenseProgress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:indeterminate="true"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/licenseStatus"
+                    style="@style/Text.CasdonLink.Caption"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="正在读取设备信息…" />
+
+                <TextView
+                    android:id="@+id/licenseResult"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/licenseDone"
+                    style="@style/Widget.CasdonLink.Button.Primary"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="返回设备页"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="授权记录" />
+
+                <TextView
+                    android:id="@+id/licenseHistorySummary"
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="10dp"
+                    android:text="本机尚未记录授权操作。" />
+
+                <Button
+                    android:id="@+id/licenseExport"
+                    style="@style/Widget.CasdonLink.Button.Secondary"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="导出授权记录" />
+
+                <Button
+                    android:id="@+id/licenseCheckService"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="检测授权服务" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

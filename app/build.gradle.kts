@@ -15,11 +15,16 @@ val buildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(buildM
 // 版本号规范（见 docs/TECHNICAL_DESIGN.md 第 11 节）：MAJOR.MINOR.PATCH，每次改动必须递增其一。
 //   MAJOR 不兼容变更 / MINOR 新增功能 / PATCH 修复、样式与重构；一批改动按其中最高级别递增。
 val appMajor = 1
-val appMinor = 7
+val appMinor = 8
 val appPatch = 0
 val appVersionName = "$appMajor.$appMinor.$appPatch"
 // versionCode 由版本名派生，避免两者不同步：MAJOR*10000 + MINOR*100 + PATCH。
 val appVersionCode = appMajor * 10000 + appMinor * 100 + appPatch
+
+// 仅 debug 构建可指向本地授权平台联调；release 始终使用代码内混淆后的生产地址。
+val authBaseUrlOverride = (project.findProperty("authBaseUrl") as String?).orEmpty()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.example.casdonlink"
@@ -35,6 +40,8 @@ android {
         versionName = appVersionName
         // 编译时间注入 BuildConfig，供首页底部「版本与版权」声明展示。
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
+        // 授权服务本地联调地址；默认空串，release 不会使用它。
+        buildConfigField("String", "AUTH_BASE_URL_OVERRIDE", "\"$authBaseUrlOverride\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

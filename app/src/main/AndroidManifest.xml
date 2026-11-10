@@ -19,6 +19,12 @@
             android:name=".PackageActivity"
             android:exported="false" />
         <activity
+            android:name=".LicenseActivity"
+            android:exported="false" />
+        <activity
+            android:name=".QuickActionsActivity"
+            android:exported="false" />
+        <activity
             android:name=".DeviceActivity"
             android:exported="false" />
         <activity

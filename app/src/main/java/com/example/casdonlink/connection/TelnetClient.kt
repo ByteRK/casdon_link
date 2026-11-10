@@ -340,7 +340,7 @@ class TelnetClient {
          * 这里把起止标记都拆成两段、由设备端 printf 拼接：回显里不出现完整标记，
          * 且正文始终取「起始标记之后、结束标记之前」，与设备是否回显无关。
          */
-        suspend fun execute(command: String, timeoutMs: Long = 8_000): String = commandMutex.withLock {
+        suspend fun execute(command: String, timeoutMs: Long = 8_000, secret: Boolean = false): String = commandMutex.withLock {
             withContext(Dispatchers.IO) {
                 val token = java.util.UUID.randomUUID().toString().replace("-", "")
                 val beginMarker = "__CL_BEGIN_${token}__"
@@ -351,7 +351,7 @@ class TelnetClient {
                 synchronized(lock) { commandBuffer.clear() }
                 terminalSuppressed = true
                 try {
-                    write("$payload\n")
+                    write("$payload\n", secret = secret)
                     val deadline = System.currentTimeMillis() + timeoutMs
                     while (System.currentTimeMillis() < deadline) {
                         val current = synchronized(lock) { commandBuffer.toString() }
@@ -383,11 +383,27 @@ class TelnetClient {
                     val echoed = raw.lastIndexOf(beginMarker)
                     val captured = (if (echoed >= 0) raw.substring(echoed + beginMarker.length) else raw)
                         .take(400)
-                    Diagnostics.log("命令超时，已捕获输出：${captured.ifBlank { "（空）" }}")
+                    // 敏感命令（授权文件写入）的正文不能进入诊断日志。
+                    if (!secret) Diagnostics.log("命令超时，已捕获输出：${captured.ifBlank { "（空）" }}")
                     throw java.net.SocketTimeoutException("设备命令执行超时")
                 } finally {
                     // 让残留的输出（如新提示符）重新进入终端流。
                     terminalSuppressed = false
+                }
+            }
+        }
+
+        /**
+         * 发送重启命令并等待设备断开。
+         *
+         * 不能复用 [execute]：reboot 会在结束标记返回前关闭连接，execute 只会等到超时。
+         * 这里只负责把命令送出去，设备断开的检测仍由后台收集协程完成。
+         */
+        suspend fun reboot() {
+            commandMutex.withLock {
+                withContext(Dispatchers.IO) {
+                    writeBlocking("sync; reboot\n")
+                    kotlinx.coroutines.withTimeoutOrNull(5_000) { closedSignal.await() }
                 }
             }
         }
@@ -415,7 +431,7 @@ class TelnetClient {
         internal fun writeBlocking(text: String, secret: Boolean = false) {
             synchronized(this) {
                 Diagnostics.log(
-                    if (secret) "发送：（登录凭证已隐藏，${text.length} 字符）"
+                    if (secret) "发送：（敏感内容已隐藏，${text.length} 字符）"
                     else "发送：${escapeForLog(text)}"
                 )
                 writeRawBlocking(TelnetEncoder.encode(text))
@@ -453,6 +469,8 @@ class TelnetClient {
             runCatching { socket.close() }
             collectorJob?.cancel()
             scope.cancel()
+            // 主动关闭也让 monitorClosed 的等待者结束，避免每次重启残留一个等待协程。
+            closedSignal.complete(Unit)
         }
 
         fun isAlive(): Boolean = !socket.isClosed && !peerClosed

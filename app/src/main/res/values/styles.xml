@@ -119,6 +119,17 @@
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
+    <!-- 机型徽标文字：单行省略，完整名称在机型详情里查看。 -->
+    <style name="Text.CasdonLink.Badge" parent="Text.CasdonLink">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/secondary</item>
+        <item name="android:textSize">@dimen/text_caption</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <!-- 连接状态等强调文字 -->
     <style name="Text.CasdonLink.Status" parent="Text.CasdonLink">
         <item name="android:layout_width">wrap_content</item>
@@ -307,6 +318,17 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_weight">1</item>
         <item name="android:orientation">vertical</item>
+    </style>
+
+    <!-- 机型徽标：带描边的胶囊，显示在设备 IP 右侧。 -->
+    <style name="Widget.CasdonLink.Badge" parent="Text.CasdonLink.Badge">
+        <item name="android:layout_height">@dimen/badge_height</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:background">@drawable/bg_badge</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxWidth">@dimen/badge_max_width</item>
+        <item name="android:paddingStart">@dimen/space_sm</item>
+        <item name="android:paddingEnd">@dimen/space_sm</item>
     </style>
 
     <!-- 最近设备记录条目；高度固定为单行，列表才能按行数约束可视区域。 -->

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "name": "旗舰烟机 YV100",
+      "pid": "U7H9Vi6d",
+      "networkInterface": "wlan0",
+      "targetPath": "\/date\/license.txt",
+      "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}<\/item>\n<item name=\"key\">{{license}}<\/item>\n<item name=\"pid\">{{pid}}<\/item>\n<\/section>\n<\/sections>",
+      "port": 23,
+      "username": "",
+      "password": ""
+    },
+    {
+      "name": "旗舰烟机 YT100",
+      "pid": "Otc9AWgB",
+      "networkInterface": "wlan0",
+      "targetPath": "\/date\/license.txt",
+      "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}<\/item>\n<item name=\"key\">{{license}}<\/item>\n<item name=\"pid\">{{pid}}<\/item>\n<\/section>\n<\/sections>",
+      "port": 23,
+      "username": "",
+      "password": ""
+    },
+    {
+      "name": "台式微蒸烤 B10 Pro",
+      "pid": "vfIS2vgn",
+      "networkInterface": "wlan0",
+      "targetPath": "\/date\/license.txt",
+      "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}<\/item>\n<item name=\"key\">{{license}}<\/item>\n<item name=\"pid\">{{pid}}<\/item>\n<\/section>\n<\/sections>",
+      "port": 23,
+      "username": "",
+      "password": ""
+    }
+  ]
+}
