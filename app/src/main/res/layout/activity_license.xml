@@ -76,6 +76,7 @@
                 <TextView
                     style="@style/Text.CasdonLink.MultilineCaption"
                     android:layout_marginTop="10dp"
+                    android:visibility="gone"
                     android:text="补发会向授权服务申请授权码、写入设备并重启。请核对机型、PID 和目标文件；已存在的授权会被覆盖。" />
 
                 <CheckBox

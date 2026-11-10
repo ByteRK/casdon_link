@@ -144,24 +144,53 @@ class LicenseActivity : AppCompatActivity() {
                 mac = Regex("(?i)(?:[0-9a-f]{2}:){5}[0-9a-f]{2}")
                     .find(address)?.value?.uppercase(Locale.US).orEmpty()
                 renderDeviceHeader()
-                currentLicenseRaw = active.execute(
-                    "cat ${ProfileProbe.shellQuote(license.targetPath)} 2>/dev/null || true",
-                    timeoutMs = 8_000,
-                    // 授权文件内容属于敏感信息，超时日志里也不能出现。
-                    secret = true
-                ).trim()
-                currentLicense = LicenseText.parse(currentLicenseRaw, license.read)
-                renderCurrentLicense()
-                val hint = if (mac.isBlank()) {
-                    "未读取到 ${license.networkInterface} 的 MAC，无法补发"
-                } else {
-                    "信息读取完成，请核对后开始补发"
+                readLicenseFromDevice(active)
+                val hint = when {
+                    mac.isBlank() -> "未读取到 ${license.networkInterface} 的 MAC，无法补发"
+                    completed -> "已从设备重新读取当前授权"
+                    else -> "信息读取完成，请核对后开始补发"
                 }
                 setBusy(false, hint)
             } catch (error: Exception) {
                 Diagnostics.log("读取设备授权信息失败：${error.javaClass.simpleName}: ${error.message}")
                 setBusy(false, "读取失败：${error.message ?: error.javaClass.simpleName}")
             }
+        }
+    }
+
+    /** 读取设备上的授权文件并刷新「当前授权」；界面只以设备内容为准。 */
+    private suspend fun readLicenseFromDevice(active: TelnetClient.Session) {
+        currentLicenseRaw = active.execute(
+            "cat ${ProfileProbe.shellQuote(license.targetPath)} 2>/dev/null || true",
+            timeoutMs = 8_000,
+            // 授权文件内容属于敏感信息，超时日志里也不能出现。
+            secret = true
+        ).trim()
+        currentLicense = LicenseText.parse(currentLicenseRaw, license.read)
+        renderCurrentLicense()
+    }
+
+    /**
+     * 设备重启并重新连接后，自动从设备读取授权，回填上方「当前授权」。
+     * 成功结果不复用服务端返回的授权码；返回是否读到了可解析的授权。
+     */
+    private suspend fun refreshLicenseAfterReconnect(active: TelnetClient.Session): Boolean {
+        return try {
+            readLicenseFromDevice(active)
+            if (currentLicense == null) {
+                // 写后重启读不到可解析授权：明确提示，避免把“未授权/无法解析”当成补发前的旧状态。
+                val current = findViewById<TextView>(R.id.licenseCurrent)
+                current.text = current.text.toString() +
+                    "\n\n补发返回成功，但设备上未读取到可解析的授权。\n请点击此处重新读取，或重新进入本页核对。"
+                false
+            } else {
+                true
+            }
+        } catch (error: Exception) {
+            Diagnostics.log("补发成功后读取设备授权失败：${error.javaClass.simpleName}: ${error.message}")
+            findViewById<TextView>(R.id.licenseCurrent).text =
+                "补发成功，但未能从设备读取当前授权。\n请点击此处重新读取。"
+            false
         }
     }
 
@@ -173,7 +202,7 @@ class LicenseActivity : AppCompatActivity() {
                 append("PID · ").append(currentLicense!!.pid).append('\n')
                 append("DID · ").append(currentLicense!!.did)
                 if (currentLicense!!.license.isNotEmpty()) {
-                    append("\nLicense · ").append(LicenseText.mask(currentLicense!!.license))
+                    append("\n授权码 · ").append(LicenseText.mask(currentLicense!!.license))
                 }
             }
             // 不展示原始内容：旧格式/规则不匹配时文件里可能含完整 License，界面不应泄露。
@@ -302,7 +331,10 @@ class LicenseActivity : AppCompatActivity() {
                     history.update(record.id) {
                         it.copy(status = LicenseStatus.SUCCESS, message = "授权写入成功，设备已重新上线")
                     }
-                    showSuccess(allocated)
+                    // 设备重新连接后自动读取设备内部的授权；成功结果不输出服务端返回的授权码。
+                    setStatus("设备已重新上线，正在读取当前授权…")
+                    val readOk = refreshLicenseAfterReconnect(restored)
+                    showSuccess(allocated, readOk)
                 }
             } catch (error: Exception) {
                 Diagnostics.log("补发授权码失败：${error.javaClass.simpleName}: ${error.message}")
@@ -336,21 +368,21 @@ class LicenseActivity : AppCompatActivity() {
         return record
     }
 
-    private fun showSuccess(auth: Authorization) {
+    private fun showSuccess(auth: Authorization, licenseRead: Boolean) {
         completed = true
-        setStatus("补发成功")
+        setStatus(if (licenseRead) "补发成功" else "补发成功，但当前授权读取异常")
         findViewById<ProgressBar>(R.id.licenseProgress).isVisible = false
         findViewById<Button>(R.id.licenseStart).isVisible = false
         findViewById<Button>(R.id.licenseDone).isVisible = true
         findViewById<TextView>(R.id.licenseResult).apply {
             isVisible = true
             text = buildString {
-                append("机型 · ").append(profile.name)
-                append("\nPID · ").append(auth.pid)
-                append("\nDID · ").append(auth.did)
-                append("\nMAC · ").append(auth.mac.ifBlank { mac })
-                append("\n授权码 · ").append(LicenseText.mask(auth.license))
-                if (auth.mode == "reused") append("\n\n服务端返回已有授权，未重复分配。")
+                if (licenseRead) {
+                    append("设备已重新上线，已从设备读取当前授权。")
+                } else {
+                    append("设备已重新上线，但未能从设备读取到有效授权。\n请点击上方「当前授权」重新读取。")
+                }
+                if (auth.mode == "reused") append("\n服务端返回已有授权，未重复分配。")
             }
         }
         updateStartButton()
@@ -397,8 +429,8 @@ class LicenseActivity : AppCompatActivity() {
         setBusy(true, "等待设备重新上线…")
         lifecycleScope.launch {
             val restored = DeviceSessionHolder.reconnectAfterReboot(60_000, rebootBaselineId)
-            setBusy(false)
             if (restored == null) {
+                setBusy(false)
                 setStatus("设备仍未上线")
                 showRebootFailure()
             } else {
@@ -406,8 +438,12 @@ class LicenseActivity : AppCompatActivity() {
                     currentRecordId?.let { id ->
                         history.update(id) { it.copy(status = LicenseStatus.SUCCESS, message = "授权写入成功，设备已重新上线") }
                     }
-                    showSuccess(auth)
+                    setStatus("设备已重新上线，正在读取当前授权…")
+                    val readOk = refreshLicenseAfterReconnect(restored)
+                    setBusy(false)
+                    showSuccess(auth, readOk)
                 } ?: run {
+                    setBusy(false)
                     toast("设备已重新上线")
                     finish()
                 }
