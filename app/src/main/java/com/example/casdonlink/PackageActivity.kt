@@ -23,6 +23,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.casdonlink.files.PhoneHttpServer
 import com.example.casdonlink.files.LocalAddress
 import com.example.casdonlink.files.FileRepository
+import com.example.casdonlink.files.formatByteSize
+import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.packages.PackageImporter
 import com.example.casdonlink.packages.RepairStep
 import com.example.casdonlink.ui.applyDarkSystemBars
@@ -49,6 +51,8 @@ class PackageActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         applyDarkSystemBars()
         setContentView(R.layout.activity_package)
+        // 一次修复可能持续数分钟，保持屏幕常亮，避免息屏后 Telnet 会话被系统回收。
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applySystemBarInsets()
         setUpStepList()
         findViewById<Button>(R.id.packageBack).setOnClickListener { finish() }
@@ -117,8 +121,12 @@ class PackageActivity : AppCompatActivity() {
         FAILED(R.drawable.dot_step_failed, "失败")
     }
 
-    /** message 只在失败时携带原因，其余状态不需要第二行。 */
-    private data class StepState(val status: StepStatus, val message: String? = null)
+    /** message 只在失败时携带原因；meta 展示传输进度等中性信息，两者互斥出现。 */
+    private data class StepState(
+        val status: StepStatus,
+        val message: String? = null,
+        val meta: String? = null
+    )
 
     /** 修复步骤行：序号、标题与状态圆点，不携带命令与传输路径。 */
     private data class StepRow(val index: Int, val step: RepairStep, val state: StepState)
@@ -140,6 +148,7 @@ class PackageActivity : AppCompatActivity() {
         class Holder(view: View) : RecyclerView.ViewHolder(view) {
             private val dot = view.findViewById<View>(R.id.stepDot)
             private val name = view.findViewById<TextView>(R.id.stepName)
+            private val meta = view.findViewById<TextView>(R.id.stepMeta)
             private val detail = view.findViewById<TextView>(R.id.stepDetail)
             private val dotRadius = view.resources.getDimension(R.dimen.step_dot_size) / 2f
             private var pulse: Animator? = null
@@ -149,6 +158,8 @@ class PackageActivity : AppCompatActivity() {
                 // selected 让超长标题跑马灯滚动；复用行时重置一次，保证重新绑定的文本也会滚动。
                 name.isSelected = false
                 name.isSelected = true
+                meta.text = row.state.meta
+                meta.visibility = if (row.state.meta.isNullOrBlank()) View.GONE else View.VISIBLE
                 detail.text = row.state.message
                 detail.visibility = if (row.state.message.isNullOrBlank()) View.GONE else View.VISIBLE
                 dot.setBackgroundResource(row.state.status.dotRes)
@@ -211,12 +222,23 @@ class PackageActivity : AppCompatActivity() {
         running = true
         findViewById<Button>(R.id.runPackage).isEnabled = false
         lifecycleScope.launch {
+            // 同一次执行复用同一个仓库实例：目录可写探测与续传状态只需建立一次；
+            // 只有会话被自动重连替换时才新建，避免继续用已关闭的 socket。
+            var repository: FileRepository? = null
+            var repositorySession: TelnetClient.Session? = null
             try {
                 for ((index, step) in pkg.manifest.steps.withIndex()) {
                     // 选文件时应用会短暂进入后台，部分 ROM 会中止原连接；每步执行前确认会话可用。
                     val session = DeviceSessionHolder.ensure()
                         ?: throw IllegalStateException("设备连接已断开")
-                    val files = FileRepository(session)
+                    val files = if (repository == null || repositorySession !== session) {
+                        FileRepository(session).also {
+                            repository = it
+                            repositorySession = session
+                        }
+                    } else {
+                        requireNotNull(repository)
+                    }
                     states[index] = StepState(StepStatus.RUNNING); renderSteps()
                     try {
                         when (step) {
@@ -227,7 +249,32 @@ class PackageActivity : AppCompatActivity() {
                                 val server = PhoneHttpServer(source)
                                 // 绑定监听端口属于网络操作，必须在 IO 线程完成。
                                 val url = withContext(Dispatchers.IO) { server.start(host) }
-                                try { files.uploadFromHttp(url, step.target) } finally { server.close() }
+                                val startedAt = System.currentTimeMillis()
+                                try {
+                                    files.uploadFromHttp(
+                                        url = url,
+                                        target = step.target,
+                                        totalBytes = source.length(),
+                                        // 清单已登记哈希时在设备端复核，续传拼接错误会被立即发现。
+                                        expectedSha256 = step.sha256,
+                                        onProgress = { done, total ->
+                                            states[index] = StepState(
+                                                StepStatus.RUNNING,
+                                                meta = transferMeta(done, total, System.currentTimeMillis() - startedAt)
+                                            )
+                                            renderSteps()
+                                        },
+                                        onRetry = { attempt, reason ->
+                                            states[index] = StepState(
+                                                StepStatus.RUNNING,
+                                                meta = "第 ${attempt + 1} 次尝试续传：$reason"
+                                            )
+                                            renderSteps()
+                                        }
+                                    )
+                                } finally {
+                                    server.close()
+                                }
                             }
                         }
                         states[index] = StepState(StepStatus.SUCCESS)
@@ -245,6 +292,20 @@ class PackageActivity : AppCompatActivity() {
                 findViewById<Button>(R.id.runPackage).isEnabled = true
             }
         }
+    }
+
+    /**
+     * 步骤第二行的传输进度：已传 / 总量 · 百分比 · 平均速度。
+     * 现场需要区分「慢」与「卡死」，只显示已传字节不足以判断，因此速率一起给出。
+     */
+    private fun transferMeta(done: Long, total: Long, elapsedMs: Long): String = buildString {
+        append(formatByteSize(done))
+        if (total > 0) {
+            append(" / ").append(formatByteSize(total))
+            append(" · ").append(((done * 100) / total).coerceIn(0, 100)).append("%")
+        }
+        val seconds = (elapsedMs / 1000.0).coerceAtLeast(0.001)
+        append(" · ").append(formatByteSize((done / seconds).toLong())).append("/s")
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()

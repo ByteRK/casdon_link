@@ -307,8 +307,9 @@ class FilesActivity : AppCompatActivity() {
                         url = url,
                         target = path.trimEnd('/') + "/" + targetName,
                         totalBytes = temp.length(),
-                        isCancelled = { progress.cancelled }
-                    ) { done, total -> progress.update(done, total) }
+                        isCancelled = { progress.cancelled },
+                        onProgress = { done, total -> progress.update(done, total) }
+                    )
                 } finally {
                     progress.dismiss()
                 }

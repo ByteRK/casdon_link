@@ -23,6 +23,13 @@
             android:id="@+id/stepName"
             style="@style/Text.CasdonLink.ListItemStrongTitle" />
 
+        <!-- 传输进度（已传/总量 · 百分比 · 速率），只在文件步骤执行中出现。 -->
+        <TextView
+            android:id="@+id/stepMeta"
+            style="@style/Text.CasdonLink.ListItemMeta"
+            android:layout_marginTop="@dimen/space_xs"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/stepDetail"
             style="@style/Text.CasdonLink.ListItemMeta.Danger"
