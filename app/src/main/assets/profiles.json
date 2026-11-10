@@ -3,7 +3,7 @@
   "profiles": [
     {
       "id": "z200muse",
-      "name": "Z200Muse",
+      "name": "旗舰洗碗机 Z200Muse",
       "priority": 100,
       "match": {
         "all": [
@@ -15,11 +15,11 @@
         "pid": "VTrRZRWy",
         "networkInterface": "wlan0",
         "targetPath": "/userdata/devices.xml",
-        "contentTemplate": "<sections>\n<section name=\"app_config\">\n<item name=\"DeviceId\">{{did}}</item>\n<item name=\"License\">{{license}}</item>\n<item name=\"ProductId\">{{pid}}</item>\n</section>\n</sections>",
+        "contentTemplate": "<sections>\n<section name=\"init\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
         "read": {
-          "pidPattern": "<item name=\"ProductId\">([^<]*)</item>",
-          "didPattern": "<item name=\"DeviceId\">([^<]*)</item>",
-          "licensePattern": "<item name=\"License\">([^<]*)</item>"
+          "pidPattern": "<item name=\"pid\">([^<]*)</item>",
+          "didPattern": "<item name=\"uuid\">([^<]*)</item>",
+          "licensePattern": "<item name=\"key\">([^<]*)</item>"
         }
       },
       "quickActions": [
@@ -30,6 +30,20 @@
             { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
             { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
             { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+          ]
+        },
+        {
+          "title": "授权维护",
+          "actions": [
+            {
+              "id": "clear_license",
+              "label": "清除授权码",
+              "description": "删除设备上的授权文件并重启设备，重启后设备为未授权状态，可重新补发授权码。",
+              "command": "rm -f /userdata/devices.xml",
+              "confirm": true,
+              "danger": true,
+              "reboot": true
+            }
           ]
         }
       ]
@@ -47,7 +61,7 @@
       "license": {
         "pid": "U7H9Vi6d",
         "networkInterface": "wlan0",
-        "targetPath": "/userdata/license.txt",
+        "targetPath": "/userdata/devices.xml",
         "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
         "read": {
           "pidPattern": "<item name=\"pid\">([^<]*)</item>",
@@ -57,12 +71,17 @@
       },
       "quickActions": [
         {
-          "title": "调试操作",
+          "title": "授权维护",
           "actions": [
-            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
-            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
-            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
-            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+            {
+              "id": "clear_license",
+              "label": "清除授权码",
+              "description": "删除设备上的授权文件并重启设备，重启后设备为未授权状态，可重新补发授权码。",
+              "command": "rm -f /userdata/devices.xml",
+              "confirm": true,
+              "danger": true,
+              "reboot": true
+            }
           ]
         }
       ]
@@ -80,7 +99,7 @@
       "license": {
         "pid": "Otc9AWgB",
         "networkInterface": "wlan0",
-        "targetPath": "/userdata/license.txt",
+        "targetPath": "/userdata/devices.xml",
         "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
         "read": {
           "pidPattern": "<item name=\"pid\">([^<]*)</item>",
@@ -90,12 +109,17 @@
       },
       "quickActions": [
         {
-          "title": "调试操作",
+          "title": "授权维护",
           "actions": [
-            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
-            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
-            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
-            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+            {
+              "id": "clear_license",
+              "label": "清除授权码",
+              "description": "删除设备上的授权文件并重启设备，重启后设备为未授权状态，可重新补发授权码。",
+              "command": "rm -f /userdata/devices.xml",
+              "confirm": true,
+              "danger": true,
+              "reboot": true
+            }
           ]
         }
       ]
@@ -113,7 +137,7 @@
       "license": {
         "pid": "vfIS2vgn",
         "networkInterface": "wlan0",
-        "targetPath": "/userdata/license.txt",
+        "targetPath": "/userdata/devices.xml",
         "contentTemplate": "<sections>\n<section name=\"ciot\">\n<item name=\"uuid\">{{did}}</item>\n<item name=\"key\">{{license}}</item>\n<item name=\"pid\">{{pid}}</item>\n</section>\n</sections>",
         "read": {
           "pidPattern": "<item name=\"pid\">([^<]*)</item>",
@@ -123,12 +147,55 @@
       },
       "quickActions": [
         {
-          "title": "调试操作",
+          "title": "授权维护",
           "actions": [
-            { "id": "show_test", "label": "查看测试文件", "command": "ls -l /userdata/test.txt", "output": true },
-            { "id": "touch_test", "label": "创建测试文件", "command": "touch /userdata/test.txt" },
-            { "id": "rm_test", "label": "删除测试文件", "command": "rm -f /userdata/test.txt", "confirm": true, "danger": true },
-            { "id": "run_script", "label": "运行测试脚本", "command": "sh /tmp/test.sh", "output": true, "confirm": true }
+            {
+              "id": "clear_license",
+              "label": "清除授权码",
+              "description": "删除设备上的授权文件并重启设备，重启后设备为未授权状态，可重新补发授权码。",
+              "command": "rm -f /userdata/devices.xml",
+              "confirm": true,
+              "danger": true,
+              "reboot": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "xmee",
+      "name": "旗舰微蒸烤 X Mee",
+      "priority": 100,
+      "match": {
+        "all": [
+          { "path": "/userdata/app/bin/HighXMSG", "op": "EXECUTABLE" }
+        ],
+        "none": []
+      },
+      "license": {
+        "pid": "HiD4WlfL",
+        "networkInterface": "wlan0",
+        "targetPath": "/userdata/devices.xml",
+        "contentTemplate": "<sections>\n<section name=\"init\">\n<item name=\"pid\"><![CDATA[{{pid}}]]></item>\n<item name=\"uuid\"><![CDATA[{{did}}]]></item>\n<item name=\"key\"><![CDATA[{{license}}]]></item>\n<item name=\"link\"></item>\n<item name=\"sn\"></item>\n</section>\n</sections>",
+        "read": {
+          "pidPattern": "<item name=\"pid\">([^<]*)</item>",
+          "didPattern": "<item name=\"uuid\">([^<]*)</item>",
+          "licensePattern": "<item name=\"key\">([^<]*)</item>"
+        }
+      },
+      "quickActions": [
+        {
+          "title": "授权维护",
+          "actions": [
+            {
+              "id": "clear_license",
+              "label": "清除授权码",
+              "description": "删除设备上的授权文件并重启设备，重启后设备为未授权状态，可重新补发授权码。",
+              "command": "rm -f /userdata/devices.xml",
+              "confirm": true,
+              "danger": true,
+              "reboot": true
+            }
           ]
         }
       ]

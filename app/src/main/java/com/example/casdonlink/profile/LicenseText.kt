@@ -4,6 +4,9 @@ package com.example.casdonlink.profile
 object LicenseText {
     data class Parsed(val pid: String, val did: String, val license: String)
 
+    /** 设备授权文件常用 `<![CDATA[...]]>` 包裹字段值，匹配前先去掉包裹层。 */
+    private val cdata = Regex("<!\\[CDATA\\[([\\s\\S]*?)]]>")
+
     fun render(template: String, pid: String, did: String, license: String): String =
         template.replace("{{pid}}", pid)
             .replace("{{did}}", did)
@@ -11,9 +14,10 @@ object LicenseText {
 
     fun parse(content: String, read: LicenseReadSpec): Parsed? {
         if (content.isBlank()) return null
-        val pid = capture(read.pidPattern, content) ?: return null
-        val did = capture(read.didPattern, content) ?: return null
-        val license = read.licensePattern?.let { capture(it, content) }.orEmpty()
+        val normalized = content.replace(cdata, "$1")
+        val pid = capture(read.pidPattern, normalized) ?: return null
+        val did = capture(read.didPattern, normalized) ?: return null
+        val license = read.licensePattern?.let { capture(it, normalized) }.orEmpty()
         return Parsed(pid = pid, did = did, license = license)
     }
 

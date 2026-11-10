@@ -15,7 +15,7 @@ val buildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(buildM
 // 版本号规范（见 docs/TECHNICAL_DESIGN.md 第 11 节）：MAJOR.MINOR.PATCH，每次改动必须递增其一。
 //   MAJOR 不兼容变更 / MINOR 新增功能 / PATCH 修复、样式与重构；一批改动按其中最高级别递增。
 val appMajor = 1
-val appMinor = 8
+val appMinor = 10
 val appPatch = 0
 val appVersionName = "$appMajor.$appMinor.$appPatch"
 // versionCode 由版本名派生，避免两者不同步：MAJOR*10000 + MINOR*100 + PATCH。

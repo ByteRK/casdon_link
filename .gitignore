@@ -3,6 +3,7 @@
 **/build/
 # 手动导出 APK 时生成的中间目录
 app/debug/
+app/release/
 
 # Android Studio machine-specific state
 .idea/

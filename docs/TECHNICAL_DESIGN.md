@@ -201,6 +201,7 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 - `id`、`name`、`priority`：唯一标识、显示名和冲突时的优先级。
 - `match.all`/`match.none`：路径存在性条件；`all` 必须非空，避免规则变成“匹配所有设备”。
 - `license`：`pid`、`networkInterface`、`targetPath`、`contentTemplate`（必须含 `{{pid}}`/`{{did}}`/`{{license}}`）、`read` 正则（PID/DID/License 至少各一个捕获组）。
+- 字段值允许用 `<![CDATA[...]]>` 包裹（如 X Mee 的 `init` 段）；读取时会先去掉 CDATA 包裹层，再套用 `read` 正则，因此同一套简易正则可同时匹配带与不带 CDATA 的授权文件。
 - `quickActions`：分组动作，每条动作可含一串命令，支持 `confirm`/`danger`/`output`/`timeoutSeconds`/`continueOnError`/`reboot`。
 
 加载时逐条校验，任何字段非法就跳过该规则并写诊断日志。多个规则同时命中时按 `priority` 选择，并在机型详情里提示冲突。
@@ -209,10 +210,11 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 
 | 机型 | 应用二进制 | PID | 授权文件 |
 | --- | --- | --- | --- |
-| Z200Muse | `/userdata/app/Z200Muse` | `VTrRZRWy` | `/userdata/devices.xml` |
-| 旗舰烟机 YV100 | `/userdata/app/yv100` | `U7H9Vi6d` | `/userdata/license.txt` |
-| 旗舰烟机 YT100 | `/userdata/app/yt100` | `Otc9AWgB` | `/userdata/license.txt` |
-| 台式微蒸烤 B10 Pro | `/userdata/app/b10pro` | `vfIS2vgn` | `/userdata/license.txt` |
+| 旗舰洗碗机 Z200Muse | `/userdata/app/Z200Muse` | `VTrRZRWy` | `/userdata/devices.xml` |
+| 旗舰烟机 YV100 | `/userdata/app/yv100` | `U7H9Vi6d` | `/userdata/devices.xml` |
+| 旗舰烟机 YT100 | `/userdata/app/yt100` | `Otc9AWgB` | `/userdata/devices.xml` |
+| 台式微蒸烤 B10 Pro | `/userdata/app/b10pro` | `vfIS2vgn` | `/userdata/devices.xml` |
+| 旗舰微蒸烤 X Mee | `/userdata/app/bin/HighXMSG` | `HiD4WlfL` | `/userdata/devices.xml` |
 
 ### 12.3 识别
 
@@ -251,6 +253,8 @@ ZIP 根目录必须包含 `manifest.json`，其余资源使用相对路径。资
 - 命令队列逐条执行，默认失败停止；`continueOnError` 可继续。
 - 输出超过规则阈值或用户要求时弹窗展示，可复制；页面底部显示状态与“停止”（当前命令结束后停止后续）。
 - `reboot` 动作复用授权页的重启等待逻辑（boot_id 校验）。
+- 内置规则统一提供「授权维护 / 清除授权码」动作：`rm -f <授权文件>` 后 `reboot`，危险操作需二次确认；`rm` 失败（如只读文件系统）时不再重启，便于定位问题。
+- Z200Muse 另保留一组「调试操作」（`/userdata/test.txt` 增删查、`sh /tmp/test.sh`），用于现场验证，不属于正式维护流程。
 - 快捷操作不替代交互终端：自由 shell 输入仍在终端页完成。
 
 ### 12.7 当前限制

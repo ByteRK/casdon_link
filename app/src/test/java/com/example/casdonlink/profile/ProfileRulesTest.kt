@@ -97,4 +97,26 @@ class ProfileRulesTest {
         assertEquals("LICE…3456", LicenseText.mask("LICENSE-123456"))
         assertEquals("********", LicenseText.mask("short"))
     }
+
+    @Test
+    fun `cdata wrapped license template renders and parses the same values`() {
+        val template = "<sections>\n<section name=\"init\">\n" +
+            "<item name=\"pid\"><![CDATA[{{pid}}]]></item>\n" +
+            "<item name=\"uuid\"><![CDATA[{{did}}]]></item>\n" +
+            "<item name=\"key\"><![CDATA[{{license}}]]></item>\n" +
+            "<item name=\"link\"></item>\n" +
+            "<item name=\"sn\"></item>\n" +
+            "</section>\n</sections>"
+        val read = LicenseReadSpec(
+            pidPattern = "<item name=\"pid\">([^<]*)</item>",
+            didPattern = "<item name=\"uuid\">([^<]*)</item>",
+            licensePattern = "<item name=\"key\">([^<]*)</item>"
+        )
+        val content = LicenseText.render(template, "vfIS2vgn", "DID-X", "SN-X")
+        val parsed = LicenseText.parse(content, read)
+
+        assertEquals("vfIS2vgn", parsed?.pid)
+        assertEquals("DID-X", parsed?.did)
+        assertEquals("SN-X", parsed?.license)
+    }
 }
