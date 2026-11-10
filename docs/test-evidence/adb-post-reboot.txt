@@ -1,0 +1,25 @@
+Casdon Link 1.8.0 — 设备重启后 ADB 复核（2026-11-10 09:19，Asia/Shanghai）
+
+命令：
+  adb -s ddcdf001e33aebdd shell 'ip -f inet addr show wlan0; date; cat /proc/uptime; cat /proc/sys/kernel/random/boot_id'
+  adb -s ddcdf001e33aebdd shell 'ls -l /userdata/devices.xml; cat /userdata/devices.xml'
+
+结果：
+  wlan0: inet 10.0.0.92/24
+  date: Tue Nov 10 09:19:32 CST 2026
+  uptime: 2711.24 4925.85
+  boot_id: 0a11eaaf-a055-4002-9b42-7ad8a2eebd5f
+  -rw-r--r-- 1 root root 185 Nov 10 02:37 /userdata/devices.xml
+
+  <sections>
+  <section name="app_config">
+  <item name="DeviceId">DID-LOCAL-001</item>
+  <item name="License">LIC-LOCAL-001</item>
+  <item name="ProductId">VTrRZRWy</item>
+  </section>
+  </sections>
+
+说明：
+  - 该文件是上一轮本地授权平台测试写入的假授权，文件 mtime 为 02:37（重启前）。
+  - 设备重新上线后文件仍存在且内容完整，证明写入、读回校验、sync 与重启后的持久化成功。
+  - 该记录不代表 App 的重启自动重连已复测通过；Android 测试机在设备重启后离线，App 级复测待另一环境执行。
