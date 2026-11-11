@@ -3,4 +3,4 @@
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     style="@style/Widget.CasdonLink.RecentDeviceRow"
-    tools:text="192.168.1.100 · admin · Telnet 23 · 已保存密码" />
+    tools:text="厨房样机 · 192.168.1.100:23 · 刚刚连接 · 已存密码" />

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 最近设备编辑弹窗：别名、地址、端口、用户名与密码；密码留空表示不修改。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="@dimen/space_2xl"
+    android:paddingTop="@dimen/space_sm"
+    android:paddingEnd="@dimen/space_2xl"
+    android:paddingBottom="@dimen/space_xs">
+
+    <EditText
+        android:id="@+id/editName"
+        style="@style/Widget.CasdonLink.EditText"
+        android:hint="设备别名（可选）"
+        android:inputType="text"
+        android:maxLength="40" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_md"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/editIp"
+            style="@style/Widget.CasdonLink.EditText"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:hint="IP 或主机名"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/editPort"
+            style="@style/Widget.CasdonLink.EditText.Port"
+            android:layout_marginStart="@dimen/space_md"
+            android:hint="23" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/editUsername"
+        style="@style/Widget.CasdonLink.EditText"
+        android:layout_marginTop="@dimen/space_md"
+        android:hint="用户名（可选）"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/editPassword"
+        style="@style/Widget.CasdonLink.EditText"
+        android:layout_marginTop="@dimen/space_md"
+        android:hint="密码（留空不修改）"
+        android:inputType="textPassword" />
+
+    <CheckBox
+        android:id="@+id/editClearPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_md"
+        android:buttonTint="@color/secondary"
+        android:text="清除已保存的密码"
+        android:textColor="@color/text_primary"
+        android:textSize="@dimen/text_body"
+        android:visibility="gone" />
+
+</LinearLayout>

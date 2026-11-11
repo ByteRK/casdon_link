@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   备份排除规则（API 31 起用 dataExtractionRules，API 30 及以下用本文件）。
+   见 https://developer.android.com/guide/topics/data/autobackup
+
+   以下内容属于现场敏感数据或本机缓存，不随云备份/设备迁移带出：
+   - sharedpref/devices.xml：设备记录（含加密后的登录密码，密钥无法迁移）
+   - file/license_records.json：授权记录（含加密后的完整授权码）
+   - file/repair_packages：修复包解压缓存，可由官方包重新导入
 -->
 <full-backup-content>
-    <!-- 设备记录含加密后的登录密码，且密码密钥无法迁移，不随备份带出。 -->
     <exclude domain="sharedpref" path="devices.xml" />
+    <exclude domain="file" path="license_records.json" />
+    <exclude domain="file" path="repair_packages" />
 </full-backup-content>

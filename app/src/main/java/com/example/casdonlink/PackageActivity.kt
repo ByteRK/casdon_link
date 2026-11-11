@@ -24,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.files.FileRepository
 import com.example.casdonlink.files.LocalAddress
@@ -326,10 +327,14 @@ class PackageActivity : AppCompatActivity() {
                                 session.execute(step.command, step.timeoutSeconds * 1000)
                             is RepairStep.File -> {
                                 val source = File(pkg.directory, step.source)
-                                val host = LocalAddress.find(this@PackageActivity)
-                                    ?: error("无法识别本机局域网地址")
                                 val server = PhoneHttpServer(source)
-                                // 绑定监听端口属于网络操作，必须在 IO 线程完成。
+                                // 绑定监听端口与网卡选择都是阻塞操作，必须在 IO 线程完成；
+                                // 地址按目标设备同网段挑选，避免 Wi-Fi + VPN 并存时选错网卡。
+                                val selection = withContext(Dispatchers.IO) {
+                                    LocalAddress.select(this@PackageActivity, DeviceSessionHolder.host)
+                                }
+                                Diagnostics.log("修复包传输地址：${selection.message}")
+                                val host = selection.address ?: error(selection.message)
                                 val url = withContext(Dispatchers.IO) { server.start(host) }
                                 val startedAt = System.currentTimeMillis()
                                 try {

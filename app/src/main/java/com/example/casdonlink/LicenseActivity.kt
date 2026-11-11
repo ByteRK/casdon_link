@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ProgressBar
@@ -66,6 +67,9 @@ class LicenseActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         applyDarkSystemBars()
         setContentView(R.layout.activity_license)
+        // 补发包含写入后最长 90 秒的重启等待：保持屏幕常亮，并配合 Manifest 锁定竖屏，
+        // 避免息屏/旋转销毁页面导致流程被取消（完整方案见 FLOW-01 前台服务）。
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applySystemBarInsets()
 
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)

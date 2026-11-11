@@ -1,5 +1,8 @@
 package com.example.casdonlink
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -243,14 +246,40 @@ class FilesActivity : AppCompatActivity() {
 
     private fun showFile(file: DeviceFile) {
         lifecycleScope.launch {
-            try {
-                val text = repository().readText(file.path)
-                MaterialAlertDialogBuilder(this@FilesActivity).setTitle(file.name)
-                    .setMessage(text.take(8_000)).setPositiveButton("关闭", null).show()
-            } catch (_: Exception) {
-                MaterialAlertDialogBuilder(this@FilesActivity).setTitle(file.name).setMessage("无法作为文本打开")
-                    .setPositiveButton("下载", null).show()
+            val active = runCatching { repository() }.getOrNull()
+            if (active == null) {
+                toast("设备连接已断开")
+                return@launch
             }
+            val text = runCatching { active.readText(file.path) }.getOrNull()
+            if (text == null) {
+                // 二进制文件无法按文本解析：至少让「下载」真的能把文件取回本机。
+                MaterialAlertDialogBuilder(this@FilesActivity)
+                    .setTitle(file.name)
+                    .setMessage("无法作为文本打开，可下载到本机后用其他应用查看。")
+                    .setNegativeButton("关闭", null)
+                    .setPositiveButton("下载") { _, _ -> download(file) }
+                    .show()
+                return@launch
+            }
+            val view = layoutInflater.inflate(R.layout.dialog_text, null)
+            view.findViewById<TextView>(R.id.dialogText).text = buildString {
+                append(text.take(PREVIEW_CHARS))
+                if (text.length > PREVIEW_CHARS) {
+                    append("\n\n…（仅显示前 ").append(PREVIEW_CHARS).append(" 个字符，完整内容请下载）")
+                }
+            }
+            MaterialAlertDialogBuilder(this@FilesActivity)
+                .setTitle(file.name)
+                .setView(view)
+                .setNegativeButton("关闭", null)
+                .setNeutralButton("复制") { _, _ ->
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink ${file.name}", text))
+                    toast("已复制到剪贴板")
+                }
+                .setPositiveButton("下载") { _, _ -> download(file) }
+                .show()
         }
     }
 
@@ -298,7 +327,14 @@ class FilesActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) { contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use(input::copyTo) } }
                 val server = PhoneHttpServer(temp)
                 activeHttpServer = server
-                val host = LocalAddress.find(this@FilesActivity) ?: throw IllegalStateException("无法识别本机局域网地址")
+                // 选本机地址要遍历网卡并解析目标地址（可能触发 DNS），不能放在主线程。
+                val selection = withContext(Dispatchers.IO) {
+                    LocalAddress.select(this@FilesActivity, DeviceSessionHolder.host)
+                }
+                Diagnostics.log("上传服务端地址：${selection.message}")
+                val host = selection.address ?: throw IllegalStateException(selection.message)
+                // 无法确认同网段时明确提示，避免 Wi-Fi + VPN 并存时静默选错网卡。
+                if (!selection.sameSubnet) toast(selection.message)
                 val url = withContext(Dispatchers.IO) { server.start(host) }
                 // 大文件传输可能持续很久，必须给出进度与取消入口，否则界面看起来像卡死。
                 val progress = showTransferProgress("上传 $targetName")
@@ -461,5 +497,10 @@ class FilesActivity : AppCompatActivity() {
         }
 
         override fun areContentsTheSame(oldItem: FileRow, newItem: FileRow): Boolean = oldItem == newItem
+    }
+
+    private companion object {
+        /** 文本预览最多展示的字符数；超出时提示下载完整文件。 */
+        const val PREVIEW_CHARS = 8_000
     }
 }

@@ -21,10 +21,12 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".LicenseActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".QuickActionsActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".DeviceActivity"
             android:exported="false" />

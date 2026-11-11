@@ -17,6 +17,8 @@ class DeviceStore(context: Context) {
                     DeviceRecord(
                         ipAddress = ip,
                         port = item.optInt("port", 23),
+                        // 增加 name 字段之前的记录没有该项，读不到时按空别名处理。
+                        name = item.optString("name", ""),
                         username = item.optString("username", ""),
                         // 密文解不开（密钥已失效）时视为未保存密码，不影响记录本身可用。
                         password = item.optString("passwordEnc").takeIf(String::isNotBlank)
@@ -32,9 +34,16 @@ class DeviceStore(context: Context) {
     fun find(host: String, port: Int): DeviceRecord? =
         getAll().firstOrNull { it.ipAddress == host && it.port == port }
 
-    /** 保存或更新记录；[DeviceRecord.password] 为空时会清除该地址已保存的密码。 */
+    /**
+     * 保存或更新记录；[DeviceRecord.password] 为空时会清除该地址已保存的密码。
+     *
+     * 记录键为「IP + 端口」：设备常在同 IP 上同时开 23/2323 等端口，只按 IP 去重会让
+     * 两条记录互相覆盖。
+     */
     fun save(record: DeviceRecord) {
-        val records = (listOf(record) + getAll().filterNot { it.ipAddress == record.ipAddress }).take(MAX_RECORDS)
+        val records = (listOf(record) + getAll().filterNot {
+            it.ipAddress == record.ipAddress && it.port == record.port
+        }).take(MAX_RECORDS)
         write(records)
     }
 
@@ -47,6 +56,7 @@ class DeviceStore(context: Context) {
         val array = JSONArray()
         records.forEach {
             val item = JSONObject().put("ip", it.ipAddress).put("port", it.port)
+                .put("name", it.name)
                 .put("username", it.username).put("lastConnectedAt", it.lastConnectedAt)
             // 只存密文；加密失败时干脆不写该字段，避免退化成明文存储。
             if (it.password.isNotEmpty()) {

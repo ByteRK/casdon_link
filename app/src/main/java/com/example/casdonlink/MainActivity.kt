@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +36,9 @@ import com.example.casdonlink.data.FeatureGate
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     private val telnetClient = TelnetClient()
@@ -62,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         setUpTitleGesture()
         setUpRecentDevices()
         renderRecentDevices()
+        prefillLastDevice()
         renderAboutInfo()
         findViewById<Button>(R.id.connectButton).setOnClickListener {
             connect(
@@ -133,7 +138,16 @@ class MainActivity : AppCompatActivity() {
                 session = telnetClient.connect(host, port, credentials = credentials)
                 DeviceSessionHolder.store(session, host, port, loginName, credentials)
                 // 保存实际生效的凭证（可能是从记录里复用的），否则自动登录会被清掉。
-                deviceStore.save(DeviceRecord(host, port, loginName, loginPassword))
+                // 别名与记录键无关，必须沿用记录里的值，避免连接后把别名清空。
+                deviceStore.save(
+                    DeviceRecord(
+                        ipAddress = host,
+                        port = port,
+                        name = remembered?.name.orEmpty(),
+                        username = loginName,
+                        password = loginPassword
+                    )
+                )
                 renderRecentDevices()
                 startActivity(Intent(this@MainActivity, DeviceActivity::class.java))
             } catch (error: Exception) {
@@ -212,18 +226,37 @@ class MainActivity : AppCompatActivity() {
         list.layoutManager = LinearLayoutManager(this)
         list.itemAnimator = null
         recentAdapter = RecentDeviceAdapter(
-            onClick = { record -> fillInputs(record); connect(record.ipAddress, record.port.toString(), record.username, record.password) },
+            // 单击只回填表单，是否连接交给用户确认；长按菜单里保留一键连接。
+            onClick = { record ->
+                fillInputs(record)
+                showMessage("已回填 ${record.address}，点击「连接设备」继续")
+            },
             onLongClick = { record -> showRecordActions(record) }
         )
         list.adapter = recentAdapter
     }
 
-    /** 点击最近设备时把记录回填到表单，便于在连接前修改地址或端口。 */
-    private fun fillInputs(record: DeviceRecord) {
+    /** 启动时把最近一次成功连接的设备回填到表单，省去重复输入；不会自动连接。 */
+    private fun prefillLastDevice() {
+        if (findViewById<EditText>(R.id.ipInput).text.isNotBlank()) return
+        val last = deviceStore.getAll().firstOrNull() ?: return
+        // 启动时不把已保存密码写回输入框，连接时会自动复用记录中的密码。
+        fillInputs(last, includePassword = false)
+    }
+
+    /** 把记录回填到表单，便于在连接前修改地址或端口。 */
+    private fun fillInputs(record: DeviceRecord, includePassword: Boolean = true) {
         findViewById<EditText>(R.id.ipInput).setText(record.ipAddress)
         findViewById<EditText>(R.id.portInput).setText(record.port.toString())
         findViewById<EditText>(R.id.usernameInput).setText(record.username)
-        findViewById<EditText>(R.id.passwordInput).setText(record.password)
+        findViewById<EditText>(R.id.passwordInput).setText(if (includePassword) record.password else "")
+    }
+
+    /** 表单当前是否正指向该记录（编辑地址后用它决定要不要同步表单）。 */
+    private fun formTargets(record: DeviceRecord): Boolean {
+        val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()
+        val port = parsePort(findViewById<EditText>(R.id.portInput).text.toString().trim())
+        return host == record.ipAddress && port == record.port
     }
 
     /**
@@ -316,26 +349,112 @@ class MainActivity : AppCompatActivity() {
         list.layoutParams = params
     }
 
-    /** 长按最近设备：清除已保存密码或删除整条记录。 */
+    /** 长按最近设备：连接、编辑别名/地址、清除已保存密码或删除整条记录。 */
     private fun showRecordActions(record: DeviceRecord) {
-        val label = if (record.username.isBlank()) record.ipAddress else "${record.ipAddress} · ${record.username}"
+        val label = record.name.ifBlank { record.address }
         val actions = buildList {
+            add("连接")
+            add("编辑名称与地址")
             if (record.hasPassword) add("清除已保存密码")
             add("删除记录")
         }
         MaterialAlertDialogBuilder(this).setTitle(label).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
+                "连接" -> connectFromRecord(record)
+                "编辑名称与地址" -> editRecord(record)
                 "清除已保存密码" -> {
                     deviceStore.save(record.copy(password = ""))
+                    renderRecentDevices()
                     showMessage("已清除保存的密码")
                 }
                 "删除记录" -> {
                     deviceStore.remove(record.ipAddress, record.port)
+                    renderRecentDevices()
                     showMessage("已删除记录")
                 }
             }
-            renderRecentDevices()
         }.show()
+    }
+
+    /** 长按菜单与编辑后的「连接」入口：先回填再走正常连接流程。 */
+    private fun connectFromRecord(record: DeviceRecord) {
+        fillInputs(record)
+        connect(record.ipAddress, record.port.toString(), record.username, record.password)
+    }
+
+    /**
+     * 编辑最近设备：别名、IP、端口、用户名与密码。
+     * 密码留空表示保持原密码，「清除已保存的密码」勾选后保存为空密码。
+     */
+    private fun editRecord(record: DeviceRecord) {
+        val view = layoutInflater.inflate(R.layout.dialog_device_edit, null)
+        val nameField = view.findViewById<EditText>(R.id.editName).apply {
+            setText(record.name)
+        }
+        val ipField = view.findViewById<EditText>(R.id.editIp).apply {
+            setText(record.ipAddress)
+        }
+        val portField = view.findViewById<EditText>(R.id.editPort).apply {
+            setText(record.port.toString())
+        }
+        val usernameField = view.findViewById<EditText>(R.id.editUsername).apply {
+            setText(record.username)
+        }
+        val passwordField = view.findViewById<EditText>(R.id.editPassword).apply {
+            hint = if (record.hasPassword) "密码（留空不修改）" else "密码（可选）"
+        }
+        val clearPassword = view.findViewById<CheckBox>(R.id.editClearPassword).apply {
+            isVisible = record.hasPassword
+            setOnCheckedChangeListener { _, checked ->
+                passwordField.isEnabled = !checked
+                if (checked) passwordField.setText("")
+            }
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("编辑设备")
+            .setView(view)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存", null)
+            .create()
+        dialog.setOnShowListener {
+            // 覆盖默认监听：校验失败时保留弹窗，方便直接改。
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val newHost = ipField.text.toString().trim()
+                if (!isValidHost(newHost)) {
+                    ipField.error = "请输入有效的 IP 或主机名"
+                    return@setOnClickListener
+                }
+                val newPort = parsePort(portField.text.toString().trim())
+                if (newPort == null) {
+                    portField.error = "端口需为 1-65535"
+                    return@setOnClickListener
+                }
+                val newPassword = when {
+                    clearPassword.isChecked -> ""
+                    passwordField.text.isNotEmpty() -> passwordField.text.toString()
+                    else -> record.password
+                }
+                val updated = record.copy(
+                    ipAddress = newHost,
+                    port = newPort,
+                    name = nameField.text.toString().trim(),
+                    username = usernameField.text.toString().trim(),
+                    password = newPassword
+                )
+                // IP 与端口是记录主键：改键时先删旧记录，否则会留下两条指向同一设备的记录。
+                if (newHost != record.ipAddress || newPort != record.port) {
+                    deviceStore.remove(record.ipAddress, record.port)
+                }
+                deviceStore.save(updated)
+                // 表单正指向被编辑的记录时同步新值，避免下次连接仍连到旧地址。
+                if (formTargets(record)) fillInputs(updated, includePassword = false)
+                renderRecentDevices()
+                dialog.dismiss()
+                showMessage("已保存")
+            }
+        }
+        dialog.show()
     }
 
     private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -366,10 +485,13 @@ class MainActivity : AppCompatActivity() {
 
         inner class Holder(private val row: TextView) : RecyclerView.ViewHolder(row) {
             fun bind(record: DeviceRecord) {
-                val displayName = if (record.username.isBlank()) record.ipAddress
-                else "${record.ipAddress} · ${record.username}"
-                val loginHint = if (record.hasPassword) "  ·  已保存密码" else ""
-                row.text = "$displayName  ·  Telnet ${record.port}$loginHint"
+                // 有别名时显示「别名 · IP:端口 · 上次连接」，没有别名时直接用地址开头。
+                row.text = buildString {
+                    append(record.name.ifBlank { record.address })
+                    if (record.name.isNotBlank()) append(" · ").append(record.address)
+                    append(" · ").append(lastConnectedText(record.lastConnectedAt))
+                    if (record.hasPassword) append(" · 已存密码")
+                }
                 row.setOnClickListener { onClick(record) }
                 row.setOnLongClickListener {
                     onLongClick(record)
@@ -392,5 +514,18 @@ class MainActivity : AppCompatActivity() {
         const val RECENT_VISIBLE_ROWS = 3
         /** 手势触发后的冷却时长，吞掉同一串连点中多出来的点击。 */
         const val GESTURE_COOLDOWN_MS = 800L
+    }
+}
+
+/** 最近设备行的「上次连接」摘要：一周内用相对时间，更早直接显示日期。 */
+private fun lastConnectedText(millis: Long): String {
+    if (millis <= 0L) return "上次连接未知"
+    val elapsed = System.currentTimeMillis() - millis
+    return when {
+        elapsed < 60_000L -> "刚刚连接"
+        elapsed < 60 * 60_000L -> "${elapsed / 60_000L} 分钟前"
+        elapsed < 24 * 60 * 60_000L -> "${elapsed / (60 * 60_000L)} 小时前"
+        elapsed < 7 * 24 * 60 * 60_000L -> "${elapsed / (24 * 60 * 60_000L)} 天前"
+        else -> SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(millis))
     }
 }

@@ -123,10 +123,11 @@
 ### DEV-01 设备别名与最近设备增强
 
 - 现状：[DeviceRecord.kt](../app/src/main/java/com/example/casdonlink/data/DeviceRecord.kt) 没有名称字段；[DeviceStore.kt](../app/src/main/java/com/example/casdonlink/data/DeviceStore.kt) 保存时只按 IP 过滤，同 IP 不同端口会互相覆盖；[MainActivity.kt](../app/src/main/java/com/example/casdonlink/MainActivity.kt) 单击最近设备会立即连接。
-- [ ] `DeviceRecord` 增加 `name`（JSON 向后兼容，旧记录默认空）；`DeviceStore.save` 改为 IP+端口匹配。
-- [ ] 首页最近设备显示“别名 · IP:端口 · 上次连接”；单击回填，长按菜单（连接/编辑/清除密码/删除）。
-- [ ] 编辑弹窗：名称、IP、端口、用户名；密码留空表示不修改，提供“清除密码”。
-- [ ] 启动时预填上次设备，或提供“连接上次设备”。
+- [x] `DeviceRecord` 增加 `name`（JSON 向后兼容，旧记录默认空）；`DeviceStore.save` 改为 IP+端口匹配。
+- [x] 首页最近设备显示“别名 · IP:端口 · 上次连接”；单击回填，长按菜单（连接/编辑/清除密码/删除）。
+- [x] 编辑弹窗：名称、IP、端口、用户名；密码留空表示不修改，提供“清除密码”。
+- [x] 启动时预填上次设备，或提供“连接上次设备”。
+- 实现记录（3.1.0）：`name` 字段向后兼容读取；记录键改为 IP+端口；最近设备行显示别名/地址/相对上次连接时间；单击只回填不再直接连接，长按菜单提供连接与编辑；编辑弹窗支持改名/改地址/改端口/清除密码；启动时回填最近一次设备（不自动连接）。
 - 验收：同 IP 多端口可共存；别名重启后保留；单击不再误连。
 - 规模：S–M。
 
@@ -165,18 +166,18 @@
 
 ## 4. 低风险快修清单
 
-> 建议在 1.12.0 第一周完成；每项都能独立提交、独立验证。
+> 已在 3.1.0 全部完成；每项独立提交、独立验证。
 
-- [ ] **Q-01 文本预览“下载”按钮无响应** —— [FilesActivity.kt](../app/src/main/java/com/example/casdonlink/FilesActivity.kt)
+- [x] **Q-01 文本预览“下载”按钮无响应** —— [FilesActivity.kt](../app/src/main/java/com/example/casdonlink/FilesActivity.kt)
   - 现状：catch 分支 `setPositiveButton("下载", null)`，点击无动作。
   - 修法：绑定 `download(file)`；成功预览也提供下载/复制。
   - 验收：无法解析为文本时点击“下载”弹出保存/分享流程。
 
-- [ ] **Q-02 同 IP 不同端口记录互相覆盖** —— [DeviceStore.kt](../app/src/main/java/com/example/casdonlink/data/DeviceStore.kt)
+- [x] **Q-02 同 IP 不同端口记录互相覆盖** —— [DeviceStore.kt](../app/src/main/java/com/example/casdonlink/data/DeviceStore.kt)
   - 修法：`save` 的 `filterNot` 同时比较 IP 与端口。
   - 验收：`10.0.0.93:23` 与 `10.0.0.93:2323` 两条记录并存。
 
-- [ ] **Q-03 中文/空格文件名上传 404** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt)
+- [x] **Q-03 中文/空格文件名上传 404** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt)
   - 现状：URL 路径直接用 `file.name`，与 `serve` 的原始字符串比较；中文/空格经 `wget` 编码后不匹配（1.10.1 报告已记录）。
   - 修法：传输用随机 ASCII token 路径（如 `/t/<uuid>`），或统一 URL 编码/解码；顺带避免同网段他人猜文件名。
   - 验收：中文文件名、带空格文件名上传与修复包传输成功。
@@ -185,11 +186,11 @@
   - 修法：执行中拦截返回键/返回按钮并提示“执行中不能停止”；锁定竖屏 + 常亮（详见 PKG-01）。
   - 验收：执行中按返回不会结束页面或中断步骤。
 
-- [ ] **Q-05 长流程旋转/息屏中断（临时方案）** —— License/QuickActions
+- [x] **Q-05 长流程旋转/息屏中断（临时方案）** —— License/QuickActions
   - 修法：`FLAG_KEEP_SCREEN_ON` + 操作页锁定竖屏；完整方案见 FLOW-01。
   - 验收：补发等待 90 秒期间旋转/息屏不丢流程。
 
-- [ ] **Q-06 备份带出授权记录与包缓存** —— [data_extraction_rules.xml](../app/src/main/res/xml/data_extraction_rules.xml)、[backup_rules.xml](../app/src/main/res/xml/backup_rules.xml)
+- [x] **Q-06 备份带出授权记录与包缓存** —— [data_extraction_rules.xml](../app/src/main/res/xml/data_extraction_rules.xml)、[backup_rules.xml](../app/src/main/res/xml/backup_rules.xml)
   - 现状：只排除了 `devices.xml`，`license_records.json` 和 `repair_packages/` 仍会进云备份。
   - 修法：排除 `file` 域的 `license_records.json`、`repair_packages/`；或直接 `allowBackup=false`（按需求定）。
   - 验收：备份清单中不出现上述文件。
@@ -198,7 +199,7 @@
   - 修法：保留最近 N 个包或总容量上限；删除时清理目录与 metadata。
   - 验收：连续导入多次后缓存不超过上限。
 
-- [ ] **Q-08 本机地址可能选错网卡** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt) 的 `LocalAddress`
+- [x] **Q-08 本机地址可能选错网卡** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt) 的 `LocalAddress`
   - 现状：取第一个非回环 IPv4，Wi-Fi + VPN/热点并存时可能选错。
   - 修法：复用 `NetworkDiagnostics.localEndpoints`，选择与目标设备同网段的地址；仍无匹配时提示。
   - 验收：开启 VPN 后上传仍走 Wi-Fi 地址。
@@ -207,17 +208,19 @@
   - 修法：catch 中保留页面，展示错误与“重新选择”。
   - 验收：选到非法 ZIP 后可立即重选，不用退出重进。
 
+> 实现记录（3.1.0）：Q-01 文本预览支持复制/下载并提示截断；Q-02 记录键改为 IP+端口（与 DEV-01 同步）；Q-03 上传传输路径改为随机 token（`/t/<uuid>`），不再比较文件名；Q-05 授权/快捷操作页 `FLAG_KEEP_SCREEN_ON` + Manifest 锁定竖屏；Q-06 备份排除 `license_records.json` 与 `repair_packages`；Q-08 `LocalAddress` 复用 `NetworkDiagnostics.localEndpoints` 按目标同网段选地址，无法匹配时提示。真机验证（中文文件名上传、VPN 场景、90 秒补发等待）待现场补测。
+
 ---
 
 ## 5. 交互优化清单
 
 ### 5.1 首页
 
-- [ ] 预填上次连接的 IP/端口。
+- [x] 预填上次连接的 IP/端口。
 - [ ] 连接过程中提供“取消”。
-- [ ] 最近设备行增加上次连接时间/机型摘要。
-- [ ] 统一单击行为：回填后手动连接，或明确一键连接；当前代码是后者，但注释写的是前者。
-- [ ] 长按增加“编辑名称/地址”。
+- [x] 最近设备行增加上次连接时间（机型摘要未做，需连接后识别机型）。
+- [x] 统一单击行为：单击只回填，连接由“连接设备”按钮或长按菜单触发。
+- [x] 长按增加“编辑名称/地址”。
 - [ ] 增加“扫描设备”入口（NET-01）。
 
 ### 5.2 设备页

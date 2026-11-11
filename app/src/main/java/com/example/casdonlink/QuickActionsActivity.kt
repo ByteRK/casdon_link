@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -44,6 +45,9 @@ class QuickActionsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         applyDarkSystemBars()
         setContentView(R.layout.activity_quick_actions)
+        // 动作可能包含重启并等待设备上线（最长 90 秒）：保持屏幕常亮并锁定竖屏，
+        // 避免息屏/旋转销毁页面后流程被取消（完整方案见 FLOW-01 前台服务）。
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applySystemBarInsets()
 
         if (!FeatureGate.isFullModeEnabled(this)) {
