@@ -6,6 +6,22 @@ import com.example.casdonlink.connection.TelnetClient
 import kotlinx.coroutines.CancellationException
 import java.net.SocketTimeoutException
 
+/**
+ * 文本预览的二进制判定：前 [BINARY_SNIFF_BYTES] 字节出现 NUL 就按二进制处理。
+ *
+ * 正常文本（含中文、ANSI 控制序列）不会带 NUL；可执行文件/压缩包几乎必然带，
+ * 按 UTF-8 强行解码只会得到乱码，还会让「下载」入口永远走不到。
+ */
+internal fun looksLikeBinary(bytes: ByteArray, limit: Int = BINARY_SNIFF_BYTES): Boolean {
+    val end = minOf(bytes.size, limit)
+    for (index in 0 until end) {
+        if (bytes[index] == 0.toByte()) return true
+    }
+    return false
+}
+
+private const val BINARY_SNIFF_BYTES = 4096
+
 class FileRepository(private val session: TelnetClient.Session) {
     /** 已确认可写的目录；同一次执行（同一个仓库实例）内不再重复探测。 */
     private val writableDirs = mutableSetOf<String>()
@@ -105,7 +121,10 @@ class FileRepository(private val session: TelnetClient.Session) {
 
     suspend fun readText(path: String, maxBytes: Int = PREVIEW_BYTES): String {
         val encoded = session.execute("head -c $maxBytes ${quote(path)} | base64 | tr -d '\\r\\n'")
-        return String(Base64.decode(encoded.filterNot(Char::isWhitespace), Base64.DEFAULT), Charsets.UTF_8)
+        val bytes = Base64.decode(encoded.filterNot(Char::isWhitespace), Base64.DEFAULT)
+        // 二进制文件按 UTF-8 解码只会得到乱码；提前拒绝，让文件页走「下载」分支。
+        require(!looksLikeBinary(bytes)) { "无法作为文本打开" }
+        return String(bytes, Charsets.UTF_8)
     }
 
     suspend fun delete(path: String) { session.execute("rm -rf -- ${quote(path)}") }
