@@ -1,0 +1,338 @@
+# Casdon Link 优化 TODO
+
+> 生成时间：2026-11-11
+>
+> 基线：1.11.0（commit `2858512`）
+>
+> 范围：基于当前代码、[1.8.0 测试报告](TEST_REPORT_1.8.0.md)、[1.10.1 测试报告](TEST_REPORT_1.10.1.md) 与[技术方案](TECHNICAL_DESIGN.md)整理的可执行改进项；不包含已完成的“补发成功后从设备重新读取授权”改动。
+>
+> 维护：完成一项勾选该项，并在末尾补 commit/PR；涉及 App 版本变化的，按[技术方案第 11 节](TECHNICAL_DESIGN.md)递增版本号。
+
+## 0. 约定
+
+- 优先级：`P0` 现场阻塞或安全风险；`P1` 高价值、建议近期做；`P2` 战略或可选。
+- 规模：`S` ≤ 0.5 天，`M` 1–3 天，`L` > 3 天（单人估算，含自测）。
+- 状态：`- [ ]` 待办，`- [x]` 已完成。
+- 涉及设备写入、重启、授权覆盖的项，必须真机验证后再勾选。
+
+## 1. 总览
+
+| ID | 优先级 | 事项 | 建议版本 | 规模 |
+| --- | --- | --- | --- | --- |
+| SEC-01 | P0 | 授权服务 HTTPS + 鉴权 + 重试 | 服务端就绪后 | M |
+| NET-01 | P0 | 设备重新发现 / 局域网扫描 | 1.13.0 | M |
+| LIC-01 | P1 | 授权记录中心 | 1.12.0 | M |
+| PKG-01 | P1 | 加密修复包、失败恢复与缓存治理 | 2.0.0（本次） | L |
+| DIAG-01 | P1 | 一键诊断包 | 1.13.0 | M |
+| DEV-01 | P1 | 设备别名与最近设备增强 | 1.12.0 | S–M |
+| TERM-01 | P1 | 终端增强 | 1.12.0 | S–M |
+| FILE-01 | P1 | 文件页增强 | 1.12.0 | S–M |
+| FLOW-01 | P1 | 长流程可靠性 | 1.12.0 起 | M–L |
+| BATCH-01 | P2 | 批量维护 | 后续评估 | L |
+| ENG-01 | P1 | 测试与 CI | 1.12.0 起 | S–M |
+| ENG-02 | P1 | 备份与导出安全 | 1.12.0 | S |
+| ENG-03 | P2 | 应用锁与敏感页面保护 | 1.14.0 | S–M |
+| ENG-04 | P1 | 本机地址选择 | 1.12.0 | S |
+
+---
+
+## 2. P0
+
+### SEC-01 授权服务 HTTPS + 鉴权 + 重试
+
+- 现状：
+  - [AuthEndpoint.kt](../app/src/main/java/com/example/casdonlink/profile/AuthEndpoint.kt) 的生产地址解码后是公网 HTTP 地址（非标端口）。
+  - [AuthClient.kt](../app/src/main/java/com/example/casdonlink/profile/AuthClient.kt) 只 POST `{pid, mac}`，没有请求鉴权。
+  - [AndroidManifest.xml](../app/src/main/AndroidManifest.xml) 全局 `usesCleartextTraffic="true"`。
+  - 风险：授权码、PID、MAC 明文经过公网；接口可被任意调用，库存存在被刷风险。
+- [ ] 服务端启用 HTTPS（反向代理 + 有效证书）；无域名时先用固定证书/VPN，不长期裸 HTTP。
+- [ ] App 校验证书与主机名；需要时在 network-security-config 中增加证书/公钥固定（pin-set）。
+- [ ] 请求增加 token/HMAC（含时间戳、nonce）；服务端校验并限流，支持轮换。
+- [ ] `AuthClient` 对连接超时/IO 失败做 2 次指数退避重试（POST 幂等，安全）；区分“平台不可达”和“业务 409”。
+- [ ] 评估 HTTPS 后关闭全局明文；本地上传服务是手机做服务端，不受该开关影响，debug 本地平台单独放行。
+- [ ] 回归：授权服务自检、assigned/reused、409 文案、真机补发。
+- 验收：抓包无明文授权码/PID/MAC；断网重试提示清晰；真机授权流程通过。
+- 依赖：服务端/运维；客户端改动量 S。
+
+### NET-01 设备重新发现 / 局域网扫描
+
+- 背景：设备重启换 IP 后只能提示人工重新连接（[技术方案 12.7](TECHNICAL_DESIGN.md)）；1.8.0 测试报告已实际遇到原 IP 离线。
+- [ ] 复用 [NetworkDiagnostics.kt](../app/src/main/java/com/example/casdonlink/connection/NetworkDiagnostics.kt) 的本机网卡与同网段判断，选择与目标同网段的地址。
+- [ ] 新增 `DeviceScanner`：并发扫描当前 /24 的 23/2323 端口（建议 16–32 并发、300–500ms 超时、可取消），跳过本机与网关。
+- [ ] 对开放主机做 Telnet 握手和只读识别：`cat /sys/class/net/<iface>/address`、`uname -a`、已有机型探测；按 MAC 匹配上次设备。
+- [ ] 补发 `reconnectAfterReboot` 超时后，自动或一键扫描已知 MAC；找到后继续读取设备授权。
+- [ ] 首页增加“扫描设备”入口；结果列表显示 IP、MAC、机型、开放端口；点击连接或替换当前地址。
+- [ ] 限制：只扫描当前 Wi-Fi 网段、前台用户触发、可随时取消；不做后台定时扫描。
+- 验收：设备换 IP 后无需手工输入，90 秒内可找回或给出明确扫描结果。
+- 规模：M；注意扫描耗时、AP 隔离和多网卡场景。
+
+---
+
+## 3. P1
+
+### LIC-01 授权记录中心
+
+- 现状：[LicenseHistory.kt](../app/src/main/java/com/example/casdonlink/profile/LicenseHistory.kt) 已保存最近 200 条记录（含状态、错误、设备、DID），但 [LicenseActivity.kt](../app/src/main/java/com/example/casdonlink/LicenseActivity.kt) 只显示计数和导出。
+- [ ] 新增 `LicenseRecordsActivity`：列表显示时间、设备/端口、机型、PID、DID、状态、模式、失败原因；支持空态与按设备筛选。
+- [ ] 详情页：目标路径、App 版本、时间线；授权码默认脱敏，二次确认后显示/复制完整值（可选）。
+- [ ] 失败记录“重试写入”：要求当前连接同 host/port 且记录中已有已分配授权；从记录恢复 `pendingAuthorization`，不重新申请；否则跳转授权页。
+- [ ] 支持清空记录（二次确认）、再次导出。
+- [ ] 导出前提示 JSON 含完整授权码；提供“脱敏导出”或密码加密 ZIP（见 ENG-02）。
+- [ ] 入口：授权页“授权记录”卡片增加“查看记录”。
+- 验收：不导出即可追溯最近成功/失败；失败记录可直接重试写入且不重复申请。
+- 规模：M。
+
+### PKG-01 加密修复包、失败恢复与缓存治理
+
+- 现状：
+  - [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt) 执行中没有停止按钮，返回会直接结束；文件步骤未传 `isCancelled`。
+  - [PackageImporter.kt](../app/src/main/java/com/example/casdonlink/packages/PackageImporter.kt) 每次导入生成 `repair_packages/pkg_*`，成功后从不清理。
+  - 包内命令以 root 执行，但当前直接导入裸 ZIP，内容可被任意查看/修改。
+- 已确认决策（2026-11-11）：
+  - **不提供主动停止**：修复包启动后拦截返回键/返回按钮并提示“执行中不能停止”；锁定竖屏并保持屏幕常亮，避免旋转中断。
+  - **失败后二次弹窗**：让使用者选择“从失败处继续”或“从头开始”。
+  - **不做文件覆盖前自动备份**。
+  - **移除裸 ZIP**：包改为加密容器 `.clpkg`，AES-256-GCM + PBKDF2-HMAC-SHA256，导入时输入密码；提供打包/解包脚本。
+  - 独立发布者签名暂缓：密码 + AEAD 已提供完整性与访问控制；需要区分打包人时再加。
+  - 最近包列表后续再做；本期先做缓存保留上限。
+- [ ] 定义 `.clpkg` 格式：magic/version/iterations/salt/nonce + AES-256-GCM 密文；AAD 覆盖头部。
+- [ ] 新增 `PackageCrypto`：PBKDF2-HMAC-SHA256（210,000 次）、流式解密到临时 ZIP；密码错误/包损坏给出明确提示。
+- [ ] `PackageActivity` 导入流程：选择 `.clpkg` → 输入密码 → 解密到临时 ZIP → 复用现有 ZIP 校验/解包；导入失败不退出，可重试或重选。
+- [ ] 移除裸 ZIP 入口：文件选择器不再接受裸 ZIP；选中非 `.clpkg`/无 magic 的文件提示“不是有效的加密修复包”。
+- [ ] 提供 `tools/pack-repair-package.ps1`、`tools/unpack-repair-package.ps1`，支持目录或 ZIP 作为输入、密码提示/参数、格式校验与往返测试。
+- [ ] 执行中禁止主动停止：拦截返回键和返回按钮；`PackageActivity` 锁定竖屏，保留 `FLAG_KEEP_SCREEN_ON`。
+- [ ] 失败二次弹窗：命中失败步骤后弹出“从失败处继续 / 从头开始 / 关闭”，保留已成功步骤状态；`continueOnError` 的失败在完成后同样汇总。
+- [ ] 顶部显示“当前/总数”；完成后汇总成功/失败/未执行/耗时。
+- [ ] 导入失败保留页面可重选；展示包 ID、版本、步骤数。
+- [ ] 缓存治理：保留最近 N 个 `repair_packages/pkg_*`（默认 5 个），导入成功后清理更早的目录。
+- [ ] 执行报告：生成文本/JSON 摘要（包信息、步骤状态、错误、耗时），支持复制/分享（可放后续小版本）。
+- 验收：裸 ZIP 无法导入；正确密码可导入并执行；错误密码有明确提示；执行中返回被拦截；失败后可选择继续方式；缓存不超过上限。
+- 规模：L；加密容器与脚本需同步修改，属于不兼容格式变更，版本按规范走 MAJOR。
+
+### DIAG-01 一键诊断包
+
+- [ ] 设备页/设置入口增加“收集诊断”。
+- [ ] 设备端只读命令：`uname -a`、`df -h`、`free`、`ps`、`ip addr`/`ifconfig`、`dmesg | tail -n 200`、授权文件摘要（PID/DID/授权码脱敏）。
+- [ ] App 端：连接诊断、机型识别结果、授权记录状态、版本/构建时间、最近错误。
+- [ ] 打包 ZIP（排除完整授权码与密码），保存或分享；设备断开时仍可导出 App 部分。
+- 验收：一份 ZIP 覆盖常见现场排障信息；敏感信息已脱敏。
+- 规模：M；注意命令输出大小上限与超时。
+
+### DEV-01 设备别名与最近设备增强
+
+- 现状：[DeviceRecord.kt](../app/src/main/java/com/example/casdonlink/data/DeviceRecord.kt) 没有名称字段；[DeviceStore.kt](../app/src/main/java/com/example/casdonlink/data/DeviceStore.kt) 保存时只按 IP 过滤，同 IP 不同端口会互相覆盖；[MainActivity.kt](../app/src/main/java/com/example/casdonlink/MainActivity.kt) 单击最近设备会立即连接。
+- [ ] `DeviceRecord` 增加 `name`（JSON 向后兼容，旧记录默认空）；`DeviceStore.save` 改为 IP+端口匹配。
+- [ ] 首页最近设备显示“别名 · IP:端口 · 上次连接”；单击回填，长按菜单（连接/编辑/清除密码/删除）。
+- [ ] 编辑弹窗：名称、IP、端口、用户名；密码留空表示不修改，提供“清除密码”。
+- [ ] 启动时预填上次设备，或提供“连接上次设备”。
+- 验收：同 IP 多端口可共存；别名重启后保留；单击不再误连。
+- 规模：S–M。
+
+### TERM-01 终端增强
+
+- [ ] 工具栏增加“清屏”“复制全部”“分享输出”。
+- [ ] 命令历史持久化（最近 50 条，SharedPreferences 或文件）。
+- [ ] 旋转/重建时保存输出与输入（ViewModel 或 onSaveInstanceState，注意 100k 字符上限）。
+- [ ] 字体大小设置（小/中/大/跟随系统）。
+- [ ] 连接恢复时显示状态与时间（可选）。
+- 验收：旋转不丢输出/历史；清屏只清本地缓冲。
+- 规模：S–M。
+
+### FILE-01 文件页增强
+
+- [ ] 修复文本预览“下载”空实现（`FilesActivity.showFile` 的 catch 分支），成功预览也提供下载/复制。
+- [ ] 顶部刷新按钮或下拉刷新；旋转后保留当前路径与列表。
+- [ ] 上传同名文件先确认覆盖；目标名可编辑；文件名安全处理（配合 Q-03）。
+- [ ] 下载优先 SAF `CreateDocument`“保存到…”，分享作为备选。
+- [ ] 删除目录时确认文案标明“目录及全部内容”。
+- [ ] 可选：多选批量删除/下载；按名称/大小/时间排序。
+- 验收：预览下载可用；同名上传有确认；中文文件名上传成功。
+- 规模：S–M。
+
+### FLOW-01 长流程可靠性
+
+- 现状：`LicenseActivity`/`QuickActionsActivity` 没有保持屏幕常亮，也没有锁定方向；所有操作都绑在 Activity 的 `lifecycleScope`，旋转或系统回收会取消协程。`PackageActivity` 只做了常亮，旋转仍会中断。
+- [ ] 短期：授权页、快捷操作页加 `FLAG_KEEP_SCREEN_ON`；操作页锁定竖屏（或处理 `configChanges`）。
+- [ ] 中期：授权、修复包、快捷操作的重启等待迁移到前台服务（ForegroundService + 通知）；Activity 只观察状态，旋转/切后台不取消。
+- [ ] 持久化操作状态：授权已有 `LicenseHistory`；为快捷操作/修复包增加执行状态或步骤快照。
+- [ ] 返回/销毁时提示“操作仍在进行”；完成后通知，失败可回页面重试。
+- 验收：旋转、切后台、锁屏 90 秒等待不丢失；返回有二次确认。
+- 规模：M–L；前台服务需处理 Android 14+ 的类型与权限。
+
+---
+
+## 4. 低风险快修清单
+
+> 建议在 1.12.0 第一周完成；每项都能独立提交、独立验证。
+
+- [ ] **Q-01 文本预览“下载”按钮无响应** —— [FilesActivity.kt](../app/src/main/java/com/example/casdonlink/FilesActivity.kt)
+  - 现状：catch 分支 `setPositiveButton("下载", null)`，点击无动作。
+  - 修法：绑定 `download(file)`；成功预览也提供下载/复制。
+  - 验收：无法解析为文本时点击“下载”弹出保存/分享流程。
+
+- [ ] **Q-02 同 IP 不同端口记录互相覆盖** —— [DeviceStore.kt](../app/src/main/java/com/example/casdonlink/data/DeviceStore.kt)
+  - 修法：`save` 的 `filterNot` 同时比较 IP 与端口。
+  - 验收：`10.0.0.93:23` 与 `10.0.0.93:2323` 两条记录并存。
+
+- [ ] **Q-03 中文/空格文件名上传 404** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt)
+  - 现状：URL 路径直接用 `file.name`，与 `serve` 的原始字符串比较；中文/空格经 `wget` 编码后不匹配（1.10.1 报告已记录）。
+  - 修法：传输用随机 ASCII token 路径（如 `/t/<uuid>`），或统一 URL 编码/解码；顺带避免同网段他人猜文件名。
+  - 验收：中文文件名、带空格文件名上传与修复包传输成功。
+
+- [ ] **Q-04 修复包执行中返回会直接中断** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
+  - 修法：执行中拦截返回键/返回按钮并提示“执行中不能停止”；锁定竖屏 + 常亮（详见 PKG-01）。
+  - 验收：执行中按返回不会结束页面或中断步骤。
+
+- [ ] **Q-05 长流程旋转/息屏中断（临时方案）** —— License/QuickActions
+  - 修法：`FLAG_KEEP_SCREEN_ON` + 操作页锁定竖屏；完整方案见 FLOW-01。
+  - 验收：补发等待 90 秒期间旋转/息屏不丢流程。
+
+- [ ] **Q-06 备份带出授权记录与包缓存** —— [data_extraction_rules.xml](../app/src/main/res/xml/data_extraction_rules.xml)、[backup_rules.xml](../app/src/main/res/xml/backup_rules.xml)
+  - 现状：只排除了 `devices.xml`，`license_records.json` 和 `repair_packages/` 仍会进云备份。
+  - 修法：排除 `file` 域的 `license_records.json`、`repair_packages/`；或直接 `allowBackup=false`（按需求定）。
+  - 验收：备份清单中不出现上述文件。
+
+- [ ] **Q-07 修复包缓存无限增长** —— [PackageImporter.kt](../app/src/main/java/com/example/casdonlink/packages/PackageImporter.kt)
+  - 修法：保留最近 N 个包或总容量上限；删除时清理目录与 metadata。
+  - 验收：连续导入多次后缓存不超过上限。
+
+- [ ] **Q-08 本机地址可能选错网卡** —— [PhoneHttpServer.kt](../app/src/main/java/com/example/casdonlink/files/PhoneHttpServer.kt) 的 `LocalAddress`
+  - 现状：取第一个非回环 IPv4，Wi-Fi + VPN/热点并存时可能选错。
+  - 修法：复用 `NetworkDiagnostics.localEndpoints`，选择与目标设备同网段的地址；仍无匹配时提示。
+  - 验收：开启 VPN 后上传仍走 Wi-Fi 地址。
+
+- [ ] **Q-09 修复包导入失败直接退出** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
+  - 修法：catch 中保留页面，展示错误与“重新选择”。
+  - 验收：选到非法 ZIP 后可立即重选，不用退出重进。
+
+---
+
+## 5. 交互优化清单
+
+### 5.1 首页
+
+- [ ] 预填上次连接的 IP/端口。
+- [ ] 连接过程中提供“取消”。
+- [ ] 最近设备行增加上次连接时间/机型摘要。
+- [ ] 统一单击行为：回填后手动连接，或明确一键连接；当前代码是后者，但注释写的是前者。
+- [ ] 长按增加“编辑名称/地址”。
+- [ ] 增加“扫描设备”入口（NET-01）。
+
+### 5.2 设备页
+
+- [ ] 断线后不要直接 `finish()`，显示“连接已断开 + 重试/返回”卡片。
+- [ ] 状态卡补齐存储、网络、CPU 信息（README 承诺了这些，目前 `DeviceRepository` 只有系统/运行时间/内存）。
+- [ ] 未知机型时允许手动选择机型（目前仅完整功能模式可用，但补发本身不受完整功能限制）。
+- [ ] 机型徽标可显示“已授权/未授权 + 脱敏授权码”摘要。
+- [ ] 状态刷新显示最后更新时间。
+
+### 5.3 授权页
+
+- [ ] “当前授权”增加显式“重新读取”按钮或图标，并显示读取时间（目前只有隐式点击）。
+- [ ] 进入页面自动检测授权服务，把“检测授权服务”从记录卡移到操作区/顶部。
+- [ ] 增加步骤条：申请 → 写入 → 校验 → 同步 → 重启 → 上线 → 读取。
+- [ ] 90 秒重启等待支持“取消等待/返回”，并说明设备可能仍在重启。
+- [ ] 当前授权 PID 与规则不一致时二次确认或阻止，而不只是警告。
+- [ ] 成功页增加“再次补发”“查看授权记录”。
+- [ ] 失败弹窗增加“复制诊断”。
+- [ ] 导出授权记录前明确提示“JSON 含完整授权码”，可选加密导出。
+- [ ] 完整授权码默认脱敏，提供“二次确认后显示/复制”（可选）。
+- [ ] 勾选框旁保留一句短提示（操作区说明被隐藏后，第一次使用的人不清楚为什么勾选）。
+- [ ] 操作页锁定竖屏并保持常亮（FLOW-01）。
+
+### 5.4 文件页
+
+- [ ] 显式刷新按钮或下拉刷新。
+- [ ] 文本预览增加复制、下载、截断提示。
+- [ ] 上传同名文件覆盖确认。
+- [ ] 下载优先 SAF“保存到…”。
+- [ ] 目录删除确认文案标明“目录及全部内容”。
+- [ ] 可选多选与排序。
+
+### 5.5 修复包页
+
+- [ ] 顶部进度改为“当前/总数”。
+- [ ] 有 `continueOnError` 失败时不要统一提示“修复步骤已完成”，给出成功/失败/跳过统计。
+- [ ] 导入失败保留页面可重选。
+- [ ] 执行中显示整体耗时与当前步骤。
+- [ ] 停止、返回拦截、失败二次弹窗、加密导入（PKG-01）。
+
+### 5.6 快捷操作 / 终端
+
+- [ ] 快捷操作重启等待保持常亮；失败提供“重试连接”。
+- [ ] 快捷操作结果支持分享/保存。
+- [ ] 终端增加“清屏”“复制全部”。
+- [ ] 命令历史持久化。
+- [ ] 旋转时保存输出与输入。
+
+---
+
+## 6. 工程与安全专项
+
+### ENG-01 测试与 CI
+
+- [ ] 为 `DeviceStore`、`LicenseHistory`、`PackageImporter`、`PhoneHttpServer` 路径编码等补单元测试。
+- [ ] 增加 fake Telnet 服务器，覆盖连接、机型探测、授权读写、重启等待、修复包执行。
+- [ ] 增加 GitHub Actions：`assembleDebug`、`testDebugUnitTest`、`lintDebug`。
+- [ ] 关键流程（授权、修复包、文件上传）保留真机验证记录到 `docs/test-evidence-*`。
+- 验收：PR 自动跑构建与测试；核心流程有回归用例。
+
+### ENG-02 备份与导出安全
+
+- [ ] 备份排除 `license_records.json`、`repair_packages/`（Q-06）。
+- [ ] 授权记录导出前敏感提示；提供脱敏导出或密码加密 ZIP。
+- [ ] 评估 `allowBackup=false` 是否符合现场换机需求。
+- [ ] 记录导出文件的保存位置与清理策略。
+
+### ENG-03 应用锁与敏感页面保护
+
+- [ ] 授权页、授权记录详情页增加 `FLAG_SECURE`（防截图/最近任务泄露），或提供开关。
+- [ ] 可选：启动应用或进入完整功能时使用生物识别/PIN，而不是硬编码密码。
+- [ ] 评估 `FeatureGate.UNLOCK_PASSWORD` 硬编码风险；它是操作门槛，不是安全边界。
+- 验收：敏感页面在最近任务中不可预览（按需）。
+
+### ENG-04 本机地址选择
+
+- [ ] `LocalAddress.find` 改为按目标设备同网段选择地址（Q-08）。
+- [ ] 无匹配地址时给出明确提示，而不是使用第一个 IPv4。
+- 验收：Wi-Fi + VPN/热点并存时上传成功。
+
+---
+
+## 7. 建议里程碑
+
+| 里程碑 | 建议内容 | 目标 |
+| --- | --- | --- |
+| **M1（2.0.0，本次）** | PKG-01：加密 `.clpkg`、打包/解包脚本、执行中禁止停止、失败二次弹窗、缓存治理 | 修复包格式升级与执行可恢复 |
+| **M2** | Q-01 ~ Q-09、LIC-01、DEV-01、TERM-01、FILE-01、FLOW-01 短期方案、ENG-01/02/04 | 现场易用性、低风险修复、授权可追溯 |
+| **M3** | NET-01、DIAG-01、FLOW-01 前台服务 | 断网/换 IP 恢复、修复包长任务可靠 |
+| **M4** | SEC-01（服务端就绪后）、ENG-03、BATCH-01 评估 | 安全加固与批量能力 |
+
+> PKG-01 移除裸 ZIP、必须重新打包，属于不兼容变更，因此本次按版本规范走 `MAJOR`（2.0.0）；M2 及之后的版本号在发布时按实际递增规则顺延。
+>
+> SEC-01 是 P0 安全项，不依赖 App 版本节奏；服务端准备好 HTTPS/鉴权后即可插入任意版本发布。
+
+---
+
+## 8. 待确认 / 暂不做
+
+- [ ] 确认现场设备数量与流程，决定 BATCH-01 是否需要排期。
+- 已决定：不做“默认显示完整授权码”，保持脱敏，最多提供二次确认后显示/复制。
+- 已决定：不做云同步/日志自动上传，授权记录与设备信息属于敏感数据，保持本机。
+- 已决定：暂不做外部动态规则导入，需要签名与来源校验，等有明确需求再设计。
+- 已决定：不做后台定时扫描，仅在用户主动触发时扫描当前网段。
+- 已决定：修复包启动后不提供主动停止；执行中拦截返回键/返回按钮，失败后只提供“从失败处继续/从头开始”。
+- 已决定：暂不做文件覆盖前自动备份。
+- 已决定：暂不做独立发布者签名；`.clpkg` 的密码 + AES-GCM 已提供完整性和访问控制，需要区分打包人时再加。
+- 已决定：最近包列表后续再做；本期先做缓存保留上限。
+
+---
+
+## 9. 完成定义（DoD）
+
+- [ ] 代码或文档改动完成，必要时补测试。
+- [ ] 版本号按[技术方案第 11 节](TECHNICAL_DESIGN.md)递增；纯文档变更按仓库惯例可不升版本（参考 `3e796dd`）。
+- [ ] `:app:assembleDebug` 与 `:app:testDebugUnitTest` 通过。
+- [ ] 涉及设备写入/重启的项完成真机验证，并在本文件勾选。
+- [ ] 更新本 TODO 的状态与 commit/PR 链接。
+- [ ] 提交信息遵循 `feat|fix|docs: ... (版本)` 格式。
