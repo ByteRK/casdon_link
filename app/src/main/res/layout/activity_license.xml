@@ -185,7 +185,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/space_md"
-                    android:buttonTint="@color/secondary"
+                    android:buttonTint="@color/primary"
                     android:text="我已核对设备铭牌与 PID 一致"
                     android:textColor="@color/text_primary"
                     android:textSize="@dimen/text_body" />

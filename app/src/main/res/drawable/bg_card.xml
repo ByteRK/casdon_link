@@ -1,5 +1,12 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/surface" />
-    <stroke android:width="1dp" android:color="@color/card_stroke" />
-    <corners android:radius="20dp" />
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    MD3 卡片容器：surfaceContainerLow + 16dp 圆角。
+    不使用描边与阴影，卡片与页面背景的层级只靠 surfaceContainer 的明度微差。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <solid android:color="@color/surface_container_low" />
+    <corners android:radius="@dimen/corner_large" />
+
 </shape>

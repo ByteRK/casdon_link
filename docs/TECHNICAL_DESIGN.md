@@ -8,7 +8,7 @@ Android App 在与嵌入式 Linux 设备同一局域网时，通过内置 Telnet
 
 ## 2. Android 技术选型与结构
 
-当前工程为 Kotlin Android App，最低 SDK 24。保持界面可在 Android Studio 预览和编辑：页面结构优先使用 XML layout、drawable、color、style 等资源；Kotlin 负责状态绑定、交互和业务逻辑，不以代码动态拼装整页布局。统一使用深色主题、圆角卡片、细边框和蓝绿强调色；保持文案短、留白足，动效控制在约 200 ms。
+当前工程为 Kotlin Android App，最低 SDK 24。保持界面可在 Android Studio 预览和编辑：页面结构优先使用 XML layout、drawable、color、style 等资源；Kotlin 负责状态绑定、交互和业务逻辑，不以代码动态拼装整页布局。整体遵循 Material Design 3 深色主题：层级用 surfaceContainer 的明度微差表达，不使用阴影区分卡片；圆角只用 medium（12dp）与 large（16dp）；保持文案短、留白足，动效控制在约 200 ms。
 
 按职责拆分，避免 Activity 承担连接、协议和业务细节：
 
@@ -150,30 +150,34 @@ Android App 在与嵌入式 Linux 设备同一局域网时，通过内置 Telnet
 
 输入框上方另有一排可横向滑动的控制键：`Esc`、`Tab`、`Ctrl+C`、`Ctrl+D`、`Ctrl+Z`、`Ctrl+L` 直接把对应控制字符写入会话（中断、补全、清屏等软键盘打不出的操作），发送内容在诊断日志里统一记成 `\xNN`；`↑`/`↓` 在本地命令历史中回放（不依赖设备端 readline 状态，避免与本地输入框内容错位）；`|` `/` `-` `~` 插入光标处，由用户补完命令后统一发送。这些按钮在样式里设 `focusable=false`，点击不会抢走输入框焦点，软键盘保持展开。
 
-控制键背景单独用 `bg_key`（10dp 圆角），不复用输入框的 `bg_input`（14dp）：按键只有 40dp 高，14dp 圆角会把上下弧线压得几乎占满高度，底部看起来像被平切掉一截。实测改为 10dp 后上下圆角轮廓基本对称（偏差在 1dp 以内）。
+控制键统一走 `Widget.CasdonLink.Button.Key`：MaterialButton 的 tonal 样式（surfaceContainerHigh + 12dp medium 圆角），既保持 40dp 紧凑高度，也符合全局圆角规范；不再维护单独的 `bg_key` 背景。
 
 设置页（3.4.0）：首页标题行右上角齿轮进入 `SettingsActivity`，位于 6 连击手势区域之外。设置页集中终端字号/命令历史、设备记录与密码清理、修复包缓存、授权记录查看/导出/清空、诊断日志、授权服务检测、签名公钥/版本/隐私说明；破坏性操作二次确认，授权码默认脱敏。补发授权、清除授权、修复包执行等强上下文操作不迁入；完整功能仍保留标题 6 连击手势，不暴露解锁入口。详见 [SETTINGS.md](SETTINGS.md)。
 
 ## 10. 界面样式约定
 
-界面视觉参数集中在 `res/values/colors.xml`、`res/values/dimens.xml`、`res/values/styles.xml` 三处，布局文件只引用样式和令牌，不写裸字号、颜色、圆角与内边距。
+界面视觉参数集中在 `res/values/colors.xml`、`res/values/dimens.xml`、`res/values/styles.xml` 三处（按钮禁用态等状态色放在 `res/color/`），布局文件只引用样式和令牌，不写裸字号、颜色、圆角与内边距。
 
-系统栏：页面创建时必须调用 `ui/SystemBars.kt` 的 `applyDarkSystemBars()`，不要直接调用 `enableEdgeToEdge()`。后者默认的 `SystemBarStyle.auto` 按**系统**深色/浅色模式决定图标深浅，在系统浅色模式下会给深色图标，落在 `@color/background` 上就看不见；本应用背景始终为深色，因此固定用 `SystemBarStyle.dark`（透明底 + 浅色图标），与主题里的 `windowLightStatusBar`/`windowLightNavigationBar` = false 一致。
+Material Design 3 约束：
 
-- `colors.xml`：只放语义色（`background`、`surface`、`primary`、`secondary`、`text_primary`、`text_secondary`、`text_hint`、`danger`、`divider`、`input_surface`、`input_stroke`、`card_stroke`）。新增颜色先判断能否复用已有语义色。
-- `dimens.xml`：`space_*` 为 4dp 栅格间距；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
+- 形状：全局只有两档圆角——`corner_medium`（12dp）用于按钮、输入框、徽标、图标按钮；`corner_large`（16dp）用于卡片、弹窗、菜单、浮空按钮。禁止胶囊/`full` 形状和自定义不规则形状库；对话框动作按钮也用 12dp。
+- 层级：页面底色 `surface`，卡片 `surfaceContainerLow`，菜单 `surfaceContainer`，弹窗与 tonal 按钮 `surfaceContainerHigh`，输入框 `surfaceContainerHighest`。主题关闭 `elevationOverlayEnabled`，卡片/按钮/FAB 的 elevation 固定为 0，不靠阴影区分层级。
+- 文字：统一使用 MD3 type scale（`TextAppearance.Material3.*` 作为父样式），标题/正文/标签颜色取 MD3 color role。
+- 颜色：`colors.xml` 以 MD3 角色为主（`surface*`、`surfaceContainer*`、`on_surface*`、`primary*`、`secondary*`、`error*`、`outline*`），并保留 `text_primary`/`text_secondary`/`danger` 等旧语义别名供 Kotlin 使用。新增颜色先判断能否复用已有角色。
+- 尺寸：`dimens.xml` 中 `space_*` 为 4dp 栅格间距；`corner_*` 为圆角；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`text_field_height`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
 - `styles.xml`：`Text.*` 只描述文字（字号、颜色、字重、行距），`Widget.*` 描述完整控件（尺寸、背景、内边距、文字）。常用项：
   - 文字：`Text.CasdonLink.Eyebrow`（顶部小标题）、`HeroTitle`/`ScreenTitle`/`ToolbarTitle`/`SectionTitle`（层级标题）、`Subtitle`/`Label`/`Caption`/`MultilineCaption`、`Body`/`MultilineBody`、`Status`、`Mono`、`ListItemTitle`/`ListItemStrongTitle`/`ListItemMeta`（含 `.Danger` 失败色变体）、`DialogTitle`。
   - 超长标题：`ToolbarTitle` 与 `ListItemStrongTitle` 已内置单行跑马灯（`singleLine` + `ellipsize=marquee` + `marqueeRepeatLimit=marquee_forever` + `selected=true`），文本未超出宽度时不会滚动；使用时父布局必须给出宽度约束（`0dp` + `layout_weight`，或 `match_parent`）。RecyclerView 行内复用需在绑定后再设一次 `isSelected`，否则文本换新后跑马灯不会启动。
-  - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。
-  - 按钮：`Button.Primary`（主操作）、`Button.Secondary`（次操作）、`Button.Small`（小号次操作）、`Button.Danger`（危险操作）、`Button.Icon`（返回符号）、`Button.Inline`（行内固定宽度）。
-  - 输入：`EditText`、`EditText.Port`。
+  - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。卡片背景 `bg_card` 为纯 `surfaceContainerLow` 圆角矩形，无描边、无阴影。
+  - 按钮：`Button.Primary`（实心 primary）、`Button.Secondary`（MD3 outlined）、`Button.Small`（小号 outlined）、`Button.Danger`（outlined error）、`Button.Icon`（tonal 图标按钮）、`Button.Inline`（行内固定宽度）、`Button.Dialog`（弹窗文字按钮）。统一 12dp 圆角、0 elevation，文字/描边使用带禁用态的 ColorStateList。
+  - 输入：`EditText`、`EditText.Port`，背景 `bg_input`（surfaceContainerHighest + 1dp outline + 12dp）。
+- 系统栏：页面创建时必须调用 `ui/SystemBars.kt` 的 `applyDarkSystemBars()`，不要直接调用 `enableEdgeToEdge()`。后者默认的 `SystemBarStyle.auto` 按**系统**深色/浅色模式决定图标深浅，在系统浅色模式下会给深色图标，落在 `surface` 上就看不见；本应用固定深色主题，因此固定用 `SystemBarStyle.dark`（透明底 + 浅色图标），与主题里的 `windowLightStatusBar`/`windowLightNavigationBar` = false 一致。
 - 启动图标：全部为矢量，项目已不含位图图标。
   - 背景：`ic_launcher_background` 用设计稿原色 `@color/ic_launcher_background`（`#3F70FF`），不跟随应用深色背景。
   - 前景：符号来自设计稿 `API.svg`，1024 画布内实测 640×640、居中（占 62.5%）。自适应图标只显示中间 66.7%，直接铺满会让符号相对可见区放大到约 94%，因此 `ic_launcher_foreground_inset` 用 `inset="16.67%"` 内缩，使符号在可见区中仍占约 62.5%，与设计稿一致。
   - `mipmap-anydpi-v26/ic_launcher{,_round}.xml` 为 adaptive-icon（background + foreground + monochrome，monochrome 与前景区用同一份资源）；API 24–25 回退到 `mipmap-anydpi/ic_launcher{,_round}.xml`（`layer-list` + `ic_launcher_legacy_background{,_round}` 圆角/圆形底色，前景用未内缩的 `ic_launcher_foreground`，因为 layer-list 不受 66.7% 裁切限制）。
-  - 弹窗：统一用 `MaterialAlertDialogBuilder`，主题为 `ThemeOverlay.CasdonLink.MaterialAlertDialog`（深色表面、20dp 圆角、语义文字色）；输入类弹窗内容用 `dialog_input.xml`，长文本用 `dialog_text.xml`。
-  - 悬浮菜单：主题为 `ThemeOverlay.CasdonLink.PopupMenu`，控件样式为 `Widget.CasdonLink.PopupMenu`，背景 `bg_popup_menu` 与卡片同色同描边。
+  - 弹窗：统一用 `MaterialAlertDialogBuilder`，主题为 `ThemeOverlay.CasdonLink.MaterialAlertDialog`（surfaceContainerHigh 表面、16dp 圆角、语义文字色、12dp 动作按钮）；输入类弹窗内容用 `dialog_input.xml`，长文本用 `dialog_text.xml`。
+  - 悬浮菜单：主题为 `ThemeOverlay.CasdonLink.PopupMenu`，控件样式为 `Widget.CasdonLink.PopupMenu`，背景 `bg_popup_menu` 为 surfaceContainer、16dp 圆角、无描边。
 
 新建页面的做法：根布局用 `Widget.CasdonLink.Screen.*`，标题栏用 `Widget.CasdonLink.Toolbar`，卡片用 `Card`，按钮只从上述按钮样式里选。需要局部差异时在布局中写少量覆盖属性，跨页面复用的差异则新增子样式（例如 `Button.Secondary.Wide`），不要在多个布局里重复同一组属性。列表行统一使用独立 `row_*.xml`，代码只负责绑定数据和事件，不得在 Kotlin 中拼装样式。弹窗与菜单也必须走上述主题，不要直接使用 `android.app.AlertDialog` 或默认 `PopupMenu`，否则会跟随系统浅色主题而与页面割裂。
 

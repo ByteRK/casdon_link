@@ -1,21 +1,84 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.CasdonLink" parent="Theme.Material3.DayNight.NoActionBar">
+    <!--
+        Material Design 3 固定深色主题。
+        组件层级由 colorSurfaceContainer* 的明度差表达，不用阴影；
+        全局圆角只有 medium（12dp）与 large（16dp）两档。
+    -->
+    <style name="Base.Theme.CasdonLink" parent="Theme.Material3.Dark.NoActionBar">
+        <!-- MD3 color roles -->
         <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorPrimaryInverse">@color/inverse_primary</item>
         <item name="colorSecondary">@color/secondary</item>
-        <item name="android:colorAccent">@color/primary</item>
+        <item name="colorOnSecondary">@color/on_secondary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorOnError">@color/on_error</item>
+        <item name="colorErrorContainer">@color/error_container</item>
+        <item name="colorOnErrorContainer">@color/on_error_container</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurfaceDim">@color/surface_dim</item>
+        <item name="colorSurfaceBright">@color/surface_bright</item>
+        <item name="colorSurfaceContainerLowest">@color/surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/surface_container_highest</item>
+        <item name="colorSurfaceInverse">@color/inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/inverse_on_surface</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline_variant</item>
+        <item name="android:colorBackground">@color/surface</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+
+        <!-- 禁用 Material 的阴影/海拔提亮，层级只由 surfaceContainer 决定 -->
+        <item name="elevationOverlayEnabled">false</item>
+        <item name="elevationOverlayColor">@color/surface</item>
+        <item name="android:windowBackground">@color/surface</item>
         <item name="android:windowLightStatusBar">false</item>
-        <!-- 与 applyDarkSystemBars() 保持一致：深色背景上固定用浅色的状态栏与导航栏图标。 -->
-        <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:navigationBarColor">@color/background</item>
-        <item name="android:windowBackground">@color/background</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+        <item name="android:backgroundDimAmount">0.6</item>
+
+        <!-- 全局形状：small/medium 统一 12dp，large/extraLarge 统一 16dp -->
+        <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.CasdonLink.Medium</item>
+        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.CasdonLink.Medium</item>
+        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.CasdonLink.Medium</item>
+        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.CasdonLink.Large</item>
+        <item name="shapeAppearanceCornerLargeIncreased">@style/ShapeAppearance.CasdonLink.Large</item>
+        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.CasdonLink.Large</item>
+        <item name="shapeAppearanceCornerExtraLargeIncreased">@style/ShapeAppearance.CasdonLink.Large</item>
+        <item name="shapeAppearanceCornerExtraExtraLarge">@style/ShapeAppearance.CasdonLink.Large</item>
+
         <!-- 弹窗固定使用深色表面，避免跟随系统浅色主题后与页面割裂。 -->
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.CasdonLink.MaterialAlertDialog</item>
-        <item name="android:backgroundDimAmount">0.65</item>
     </style>
 
     <style name="Theme.CasdonLink" parent="Base.Theme.CasdonLink" />
+
+
+    <!-- ==================== 形状 ==================== -->
+
+    <style name="ShapeAppearance.CasdonLink.Medium" parent="ShapeAppearance.Material3.Corner.Medium">
+        <item name="cornerSize">@dimen/corner_medium</item>
+    </style>
+
+    <style name="ShapeAppearance.CasdonLink.Large" parent="ShapeAppearance.Material3.Corner.Large">
+        <item name="cornerSize">@dimen/corner_large</item>
+    </style>
+
+    <!-- 对话框使用 large（16dp），与卡片/菜单/浮空按钮同一档。 -->
+    <style name="ShapeAppearance.CasdonLink.Dialog" parent="ShapeAppearance.CasdonLink.Large" />
 
 
     <!-- ==================== 弹窗主题 ==================== -->
@@ -24,30 +87,33 @@
         <item name="alertDialogStyle">@style/MaterialAlertDialog.CasdonLink</item>
         <item name="colorPrimary">@color/primary</item>
         <item name="colorSecondary">@color/secondary</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorOnSurface">@color/text_primary</item>
-        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="colorSurface">@color/surface_container_high</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
         <item name="android:textColorHint">@color/text_hint</item>
+        <item name="buttonBarButtonStyle">@style/Widget.CasdonLink.Button.Dialog</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.CasdonLink.Button.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.CasdonLink.Button.Dialog</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.CasdonLink.Button.Dialog</item>
         <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.CasdonLink.Title.Text</item>
         <item name="materialAlertDialogBodyTextStyle">@style/MaterialAlertDialog.CasdonLink.Body.Text</item>
     </style>
 
-    <!-- 弹窗主体：深色表面 + 与卡片一致的 20dp 圆角。 -->
+    <!-- 弹窗主体：surfaceContainerHigh + 16dp 圆角。 -->
     <style name="MaterialAlertDialog.CasdonLink" parent="MaterialAlertDialog.Material3">
-        <item name="backgroundTint">@color/surface</item>
+        <item name="backgroundTint">@color/surface_container_high</item>
         <item name="shapeAppearance">@style/ShapeAppearance.CasdonLink.Dialog</item>
     </style>
 
     <style name="MaterialAlertDialog.CasdonLink.Title.Text" parent="MaterialAlertDialog.Material3.Title.Text">
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_section_title</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">@dimen/text_toolbar_title</item>
     </style>
 
     <style name="MaterialAlertDialog.CasdonLink.Body.Text" parent="MaterialAlertDialog.Material3.Body.Text">
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
@@ -58,12 +124,12 @@
         <item name="popupMenuStyle">@style/Widget.CasdonLink.PopupMenu</item>
         <item name="android:popupMenuStyle">@style/Widget.CasdonLink.PopupMenu</item>
         <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorOnSurface">@color/text_primary</item>
-        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorSurface">@color/surface_container</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
         <item name="colorPrimary">@color/primary</item>
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
         <item name="textAppearanceLargePopupMenu">@style/TextAppearance.CasdonLink.PopupMenu</item>
         <item name="android:textAppearanceLargePopupMenu">@style/TextAppearance.CasdonLink.PopupMenu</item>
     </style>

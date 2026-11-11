@@ -75,7 +75,7 @@
         android:layout_weight="1"
         android:background="@drawable/bg_card"
         android:fillViewport="true"
-        android:padding="@dimen/row_padding">
+        android:padding="@dimen/card_padding">
 
         <TextView
             android:id="@+id/terminalOutput"

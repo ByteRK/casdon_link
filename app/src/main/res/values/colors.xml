@@ -1,24 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Material Design 3 深色配色。
+    层级只用 surfaceContainer* 的明度微差表达：surface 是页面底色，卡片用
+    surfaceContainerLow，菜单用 surfaceContainer，弹窗/tonal 按钮用
+    surfaceContainerHigh，输入框用 surfaceContainerHighest；任何组件都不靠阴影区分层级。
+    旧语义色保留为别名，避免业务代码整体改名。
+-->
 <resources>
-    <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="background">#0F172A</color>
-    <color name="surface">#1E293B</color>
+
+    <!-- MD3 neutral / surface roles（深色） -->
+    <color name="surface_dim">#0B1220</color>
+    <color name="surface">#0F172A</color>
+    <color name="surface_bright">#35415C</color>
+    <color name="surface_container_lowest">#0A101D</color>
+    <color name="surface_container_low">#141E33</color>
+    <color name="surface_container">#1A253B</color>
+    <color name="surface_container_high">#202C44</color>
+    <color name="surface_container_highest">#26334D</color>
+    <color name="surface_variant">#2B3852</color>
+    <color name="on_surface">#E5E7EB</color>
+    <color name="on_surface_variant">#A3B0C2</color>
+    <color name="outline">#57657D</color>
+    <color name="outline_variant">#334155</color>
+    <color name="inverse_surface">#E5E7EB</color>
+    <color name="inverse_on_surface">#1A253B</color>
+
+    <!-- MD3 primary / secondary / error roles（深色） -->
     <color name="primary">#4F9CF9</color>
+    <color name="on_primary">#04121F</color>
+    <color name="primary_container">#1E3A5F</color>
+    <color name="on_primary_container">#D6E7FF</color>
+    <color name="inverse_primary">#1E3A5F</color>
     <color name="secondary">#5EEAD4</color>
-    <color name="text_primary">#E5E7EB</color>
-    <color name="text_secondary">#94A3B8</color>
-    <color name="text_hint">#64748B</color>
-    <color name="danger">#F87171</color>
+    <color name="on_secondary">#03201C</color>
+    <color name="secondary_container">#123C3A</color>
+    <color name="on_secondary_container">#B8FFF2</color>
+    <color name="error">#F87171</color>
+    <color name="on_error">#2A0A0A</color>
+    <color name="error_container">#4A1D1D</color>
+    <color name="on_error_container">#FFDAD6</color>
+
+    <!-- 兼容别名：布局与 Kotlin 仍在使用的语义名 -->
+    <color name="text_primary">@color/on_surface</color>
+    <color name="text_secondary">@color/on_surface_variant</color>
+    <color name="text_hint">#7C8AA0</color>
+    <color name="danger">@color/error</color>
+    <color name="divider">#1FFFFFFF</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="ripple_on_surface">#33FFFFFF</color>
+    <color name="ripple_primary">#334F9CF9</color>
+    <color name="ripple_error">#33F87171</color>
+
     <!-- 修复步骤状态色：待执行 / 执行中 / 成功 / 失败，供列表状态圆点统一取值。 -->
     <color name="status_pending">@color/text_hint</color>
     <color name="status_running">@color/primary</color>
     <color name="status_success">@color/secondary</color>
-    <color name="status_failed">@color/danger</color>
-    <color name="divider">#22334455</color>
-    <color name="input_surface">#172337</color>
-    <color name="input_stroke">#334155</color>
-    <color name="card_stroke">#24FFFFFF</color>
+    <color name="status_failed">@color/error</color>
+
     <!-- 启动图标底色：沿用设计稿 API.svg 的原始蓝色，不随应用深色背景变化。 -->
     <color name="ic_launcher_background">#3F70FF</color>
 </resources>

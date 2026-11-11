@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MD3 filled button：启用时 primary/onPrimary，禁用时 onSurface 12%/38%。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:color="@color/primary"
+        android:state_enabled="true" />
+    <item
+        android:alpha="0.12"
+        android:color="@color/on_surface" />
+</selector>

@@ -18,7 +18,7 @@
 
 ## 页面与视觉
 
-页面保持简约，避免长段说明文字，以短标签、状态和操作为主。采用深色、现代、轻盈的科技风格：背景 `#0F172A`，卡片使用半透明 `#1E293B`，主色 `#4F9CF9`，辅助色 `#5EEAD4`，主文字 `#E5E7EB`，次级文字 `#94A3B8`。圆角卡片、细边框、柔和蓝绿光晕和充足留白构成整体视觉；动效轻微，约 200ms，活动状态可使用缓慢呼吸光效。
+页面保持简约，避免长段说明文字，以短标签、状态和操作为主。采用 Material Design 3 深色主题：页面底色 `surface #0F172A`，卡片 `surfaceContainerLow #141E33`，菜单 `surfaceContainer #1A253B`，弹窗/tonal 按钮 `surfaceContainerHigh #202C44`，输入框 `surfaceContainerHighest #26334D`；主色 `#4F9CF9`，辅助色 `#5EEAD4`。层级只靠 surfaceContainer 的明度微差表达，卡片与按钮不使用阴影；全局圆角只有 medium（12dp）与 large（16dp）两档，按钮不使用胶囊形。动效轻微，约 200ms。
 
 ## 主要页面
 

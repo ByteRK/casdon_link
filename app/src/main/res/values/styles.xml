@@ -4,6 +4,11 @@
     新增页面时优先复用这里的样式；确需差异时用 `style + 少量覆盖属性`，
     或在本文件里扩展子样式，避免在布局中散落魔法值。
     命名约定：Text.* 只描述文字，Widget.* 描述完整控件（含尺寸/背景）。
+
+    Material Design 3 约束：
+    - 文字使用 MD3 type scale（Headline / Title / Body / Label），颜色取 MD3 color role。
+    - 圆角只用 medium（12dp）或 large（16dp），禁止 full（胶囊）与不规则形状。
+    - 层级用 surfaceContainer 明度差表达，卡片/按钮/弹窗均不依赖阴影。
 -->
 <resources>
 
@@ -13,31 +18,28 @@
     <style name="Text.CasdonLink" parent="" />
 
     <!-- 页面顶部小标题（全大写、宽字距） -->
-    <style name="Text.CasdonLink.Eyebrow" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Eyebrow" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/secondary</item>
         <item name="android:textSize">@dimen/text_caption</item>
-        <item name="android:textStyle">bold</item>
-        <item name="android:letterSpacing">0.16</item>
+        <item name="android:letterSpacing">0.08</item>
     </style>
 
     <!-- 首页主标题 -->
-    <style name="Text.CasdonLink.HeroTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.HeroTitle" parent="TextAppearance.Material3.HeadlineLarge">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_hero</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- 页面主标题（设备页等） -->
-    <style name="Text.CasdonLink.ScreenTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.ScreenTitle" parent="TextAppearance.Material3.HeadlineMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_screen_title</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!--
@@ -46,40 +48,38 @@
         不会滚动，因此短标题保持静止。跑马灯需要单行且有宽度约束（布局里都是 0dp+weight），
         并由代码设 isSelected = true 启动（android:selected 无法在 style 中声明）。
     -->
-    <style name="Text.CasdonLink.ToolbarTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.ToolbarTitle" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:ellipsize">marquee</item>
         <item name="android:marqueeRepeatLimit">marquee_forever</item>
         <item name="android:scrollHorizontally">true</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_toolbar_title</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- 区块标题（设备操作 / 最近设备） -->
-    <style name="Text.CasdonLink.SectionTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.SectionTitle" parent="TextAppearance.Material3.TitleMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_section_title</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- 页面副标题 / 说明 -->
-    <style name="Text.CasdonLink.Subtitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Subtitle" parent="TextAppearance.Material3.BodyMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
     <!-- 注释 / 提示文字 -->
-    <style name="Text.CasdonLink.Caption" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_caption</item>
     </style>
 
@@ -90,18 +90,18 @@
     </style>
 
     <!-- 表单字段标签 -->
-    <style name="Text.CasdonLink.Label" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Label" parent="TextAppearance.Material3.LabelMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
     <!-- 正文 -->
-    <style name="Text.CasdonLink.Body" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Body" parent="TextAppearance.Material3.BodyMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
@@ -111,79 +111,69 @@
         <item name="android:lineSpacingExtra">@dimen/space_xs</item>
     </style>
 
-    <!-- 小号正文 -->
-    <style name="Text.CasdonLink.BodySmall" parent="Text.CasdonLink">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_label</item>
-    </style>
-
     <!-- 机型徽标文字：单行省略，完整名称在机型详情里查看。 -->
-    <style name="Text.CasdonLink.Badge" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Badge" parent="TextAppearance.Material3.LabelMedium">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:ellipsize">end</item>
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/secondary</item>
         <item name="android:textSize">@dimen/text_caption</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- 连接状态等强调文字 -->
-    <style name="Text.CasdonLink.Status" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Status" parent="TextAppearance.Material3.LabelLarge">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/secondary</item>
-        <item name="android:textSize">@dimen/text_label</item>
+        <item name="android:textSize">@dimen/text_body</item>
     </style>
 
     <!-- 等宽字体（终端输出、命令输入） -->
-    <style name="Text.CasdonLink.Mono" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Mono" parent="TextAppearance.Material3.BodySmall">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:fontFamily">monospace</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_label</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">@dimen/text_mono</item>
     </style>
 
     <!-- 列表项标题 -->
-    <style name="Text.CasdonLink.ListItemTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.ListItemTitle" parent="TextAppearance.Material3.BodyLarge">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:ellipsize">middle</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_body</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">@dimen/text_body_large</item>
     </style>
 
     <!--
-        列表项标题（加粗、单行）。超长时跑马灯滚动（由代码设 isSelected = true 启动），
+        列表项标题（强调、单行）。超长时跑马灯滚动（由代码设 isSelected = true 启动），
         文本未超出宽度时不会滚动；需要跑马灯的行必须在横向布局里有宽度约束。
     -->
-    <style name="Text.CasdonLink.ListItemStrongTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.ListItemStrongTitle" parent="TextAppearance.Material3.TitleMedium">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:ellipsize">marquee</item>
         <item name="android:marqueeRepeatLimit">marquee_forever</item>
         <item name="android:scrollHorizontally">true</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_body</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">@dimen/text_section_title</item>
     </style>
 
     <!-- 列表项次要信息 -->
-    <style name="Text.CasdonLink.ListItemMeta" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.ListItemMeta" parent="TextAppearance.Material3.BodySmall">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_caption</item>
     </style>
 
     <!-- 列表项次要信息（失败原因，用危险色强调） -->
     <style name="Text.CasdonLink.ListItemMeta.Danger" parent="Text.CasdonLink.ListItemMeta">
-        <item name="android:textColor">@color/danger</item>
+        <item name="android:textColor">@color/error</item>
     </style>
 
     <!-- 列表行前导符号（文件/目录图标位） -->
@@ -196,29 +186,28 @@
     </style>
 
     <!-- 对话框标题 -->
-    <style name="Text.CasdonLink.DialogTitle" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.DialogTitle" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:ellipsize">middle</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">@dimen/text_section_title</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">@dimen/text_toolbar_title</item>
     </style>
 
     <!-- 页面底部声明（版本/编译时间/版权），居中弱化显示；视觉权重与参考项目设置页页脚一致。 -->
-    <style name="Text.CasdonLink.Footer" parent="Text.CasdonLink">
+    <style name="Text.CasdonLink.Footer" parent="TextAppearance.Material3.BodySmall">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:gravity">center</item>
         <item name="android:lineSpacingExtra">@dimen/space_xs</item>
-        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textColor">@color/on_surface_variant</item>
         <item name="android:textSize">@dimen/text_caption</item>
     </style>
 
     <!-- 悬浮菜单项文字 -->
-    <style name="TextAppearance.CasdonLink.PopupMenu" parent="TextAppearance.AppCompat.Menu">
-        <item name="android:textColor">@color/text_primary</item>
+    <style name="TextAppearance.CasdonLink.PopupMenu" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_body_large</item>
     </style>
 
@@ -233,7 +222,7 @@
     <style name="Widget.CasdonLink.Screen.Scroll" parent="Widget.CasdonLink.Screen">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">match_parent</item>
-        <item name="android:background">@color/background</item>
+        <item name="android:background">@color/surface</item>
         <item name="android:fillViewport">true</item>
     </style>
 
@@ -252,7 +241,7 @@
     <style name="Widget.CasdonLink.Screen.Column" parent="Widget.CasdonLink.Screen">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">match_parent</item>
-        <item name="android:background">@color/background</item>
+        <item name="android:background">@color/surface</item>
         <item name="android:orientation">vertical</item>
         <item name="android:paddingStart">@dimen/screen_padding_horizontal</item>
         <item name="android:paddingTop">@dimen/screen_padding_vertical</item>
@@ -260,7 +249,7 @@
         <item name="android:paddingBottom">@dimen/screen_padding_bottom</item>
     </style>
 
-    <!-- 圆角卡片容器 -->
+    <!-- 卡片容器：surfaceContainerLow + 16dp，无描边、无阴影。 -->
     <style name="Widget.CasdonLink.Card" parent="Widget.CasdonLink">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -293,8 +282,8 @@
         <item name="android:background">?android:attr/selectableItemBackground</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:orientation">horizontal</item>
-        <item name="android:paddingStart">@dimen/space_md</item>
-        <item name="android:paddingEnd">@dimen/space_md</item>
+        <item name="android:paddingStart">@dimen/space_lg</item>
+        <item name="android:paddingEnd">@dimen/space_lg</item>
     </style>
 
     <!-- 多行列表项（修复步骤行） -->
@@ -320,23 +309,24 @@
         <item name="android:orientation">vertical</item>
     </style>
 
-    <!-- 机型徽标：带描边的胶囊，显示在设备 IP 右侧。 -->
+    <!-- 机型徽标：12dp 圆角（非胶囊），显示在设备 IP 右侧。 -->
     <style name="Widget.CasdonLink.Badge" parent="Text.CasdonLink.Badge">
         <item name="android:layout_height">@dimen/badge_height</item>
         <item name="android:layout_width">wrap_content</item>
         <item name="android:background">@drawable/bg_badge</item>
         <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
         <item name="android:maxWidth">@dimen/badge_max_width</item>
-        <item name="android:paddingStart">@dimen/space_sm</item>
-        <item name="android:paddingEnd">@dimen/space_sm</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
     </style>
 
-    <!-- 最近设备记录条目；高度固定为单行，列表才能按行数约束可视区域。 -->
+    <!-- 最近设备记录条目：可点击卡片；高度固定为单行，列表才能按行数约束可视区域。 -->
     <style name="Widget.CasdonLink.RecentDeviceRow" parent="Widget.CasdonLink">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">@dimen/recent_device_row_height</item>
         <item name="android:layout_marginBottom">@dimen/space_md</item>
-        <item name="android:background">@drawable/bg_card</item>
+        <item name="android:background">@drawable/bg_card_interactive</item>
         <item name="android:clickable">true</item>
         <item name="android:ellipsize">end</item>
         <item name="android:focusable">true</item>
@@ -344,7 +334,7 @@
         <item name="android:paddingStart">@dimen/space_lg</item>
         <item name="android:paddingEnd">@dimen/space_lg</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
@@ -367,60 +357,77 @@
     </style>
 
 
-    <!-- ==================== 按钮样式 ==================== -->
+    <!-- ==================== 按钮样式（MaterialButton） ==================== -->
 
-    <style name="Widget.CasdonLink.Button" parent="Widget.CasdonLink">
+    <style name="Widget.CasdonLink.Button" parent="Widget.Material3.Button">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">@dimen/control_height</item>
-        <item name="android:paddingStart">@dimen/space_lg</item>
-        <item name="android:paddingEnd">@dimen/space_lg</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">@dimen/space_2xl</item>
+        <item name="android:paddingEnd">@dimen/space_2xl</item>
+        <item name="android:stateListAnimator">@null</item>
         <item name="android:textAllCaps">false</item>
-        <item name="android:textSize">@dimen/text_body_large</item>
+        <item name="android:textColor">@color/button_primary_text</item>
+        <item name="android:textSize">@dimen/text_body</item>
+        <item name="backgroundTint">@color/button_primary_bg</item>
+        <item name="elevation">0dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.CasdonLink.Medium</item>
+        <item name="strokeWidth">0dp</item>
     </style>
 
-    <!-- 主操作按钮（实心强调色） -->
+    <!-- 主操作按钮（实心 primary） -->
     <style name="Widget.CasdonLink.Button.Primary" parent="Widget.CasdonLink.Button">
-        <item name="android:background">@drawable/bg_button</item>
-        <item name="android:textColor">@color/background</item>
-        <item name="android:textStyle">bold</item>
+        <item name="backgroundTint">@color/button_primary_bg</item>
+        <item name="android:textColor">@color/button_primary_text</item>
     </style>
 
-    <!-- 次操作按钮（描边） -->
+    <!-- 次操作按钮（MD3 outlined：透明底 + outline 描边 + primary 文字） -->
     <style name="Widget.CasdonLink.Button.Secondary" parent="Widget.CasdonLink.Button">
-        <item name="android:background">@drawable/bg_input</item>
-        <!-- 不继承 Material 默认的 colorPrimary 背景着色，否则启用状态的次按钮会变成主色实心。 -->
-        <item name="android:backgroundTint">@null</item>
-        <item name="backgroundTint">@null</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="android:textColor">@color/button_secondary_text</item>
+        <item name="rippleColor">@color/ripple_primary</item>
+        <item name="strokeColor">@color/button_secondary_stroke</item>
+        <item name="strokeWidth">1dp</item>
     </style>
 
     <!-- 小号次操作按钮（刷新、诊断） -->
     <style name="Widget.CasdonLink.Button.Small" parent="Widget.CasdonLink.Button.Secondary">
         <item name="android:layout_height">@dimen/control_height_small</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
     <!-- 危险操作按钮（断开连接、删除） -->
     <style name="Widget.CasdonLink.Button.Danger" parent="Widget.CasdonLink.Button.Secondary">
-        <item name="android:textColor">@color/danger</item>
+        <item name="android:textColor">@color/button_danger_text</item>
+        <item name="rippleColor">@color/ripple_error</item>
+        <item name="strokeColor">@color/button_danger_stroke</item>
     </style>
 
-    <!-- 图标/符号按钮（返回箭头） -->
+    <!-- 图标/符号按钮（返回箭头）：tonal 图标按钮，12dp 圆角。 -->
     <style name="Widget.CasdonLink.Button.Icon" parent="Widget.CasdonLink.Button">
         <item name="android:layout_width">@dimen/icon_button_width</item>
         <item name="android:layout_height">@dimen/icon_button_height</item>
-        <item name="android:background">@drawable/bg_input</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
         <item name="android:gravity">center</item>
         <item name="android:padding">0dp</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+        <item name="android:textColor">@color/button_tonal_text</item>
         <item name="android:textSize">@dimen/text_icon</item>
+        <item name="backgroundTint">@color/button_tonal_bg</item>
+        <item name="rippleColor">@color/ripple_on_surface</item>
+        <item name="strokeWidth">0dp</item>
     </style>
 
-    <!-- 图片图标按钮（首页右上角设置齿轮） -->
+    <!-- 图片图标按钮（首页右上角设置齿轮）：tonal + 12dp 圆角 + 水波纹。 -->
     <style name="Widget.CasdonLink.Button.IconImage" parent="Widget.CasdonLink">
         <item name="android:layout_width">@dimen/icon_button_width</item>
         <item name="android:layout_height">@dimen/icon_button_height</item>
-        <item name="android:background">@drawable/bg_input</item>
+        <item name="android:background">@drawable/bg_icon_button</item>
         <item name="android:padding">@dimen/space_md</item>
         <item name="android:scaleType">centerInside</item>
     </style>
@@ -428,21 +435,27 @@
     <!-- 行内固定宽度主按钮（终端发送） -->
     <style name="Widget.CasdonLink.Button.Inline" parent="Widget.CasdonLink.Button.Primary">
         <item name="android:layout_width">@dimen/control_width_inline</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
+    </style>
+
+    <!-- 弹窗文字按钮：保持 MD3 文字按钮观感，但形状改为 medium（12dp），不使用胶囊。 -->
+    <style name="Widget.CasdonLink.Button.Dialog" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="shapeAppearance">@style/ShapeAppearance.CasdonLink.Medium</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="rippleColor">@color/ripple_primary</item>
     </style>
 
     <!--
         终端控制键（Esc / Tab / Ctrl+C / 符号键）。
         focusable=false：点击时不能让输入框失焦，否则软键盘会收起，连续按键就断了。
         点击依然有效（clickable 不受 focusable 影响）。
-        圆角比常规按钮小（10dp）：按键只有 40dp 高，沿用 14dp 时上下圆角弧线几乎吃掉
-        整个高度，底部看着像被切平；同时显式给 0 内边距、0 最小高度，
-        避免按钮自带 inset 让背景四角看起来不一致。
+        40dp 高的按键用 12dp medium 圆角，与全局圆角规范一致。
     -->
-    <style name="Widget.CasdonLink.Button.Key" parent="Widget.CasdonLink.Button.Secondary">
+    <style name="Widget.CasdonLink.Button.Key" parent="Widget.CasdonLink.Button">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">@dimen/control_height_key</item>
         <item name="android:layout_marginEnd">@dimen/space_sm</item>
-        <item name="android:background">@drawable/bg_key</item>
         <item name="android:focusable">false</item>
         <item name="android:fontFamily">monospace</item>
         <item name="android:minWidth">@dimen/control_width_key</item>
@@ -451,7 +464,11 @@
         <item name="android:paddingEnd">@dimen/space_md</item>
         <item name="android:paddingTop">0dp</item>
         <item name="android:paddingBottom">0dp</item>
+        <item name="android:textColor">@color/button_tonal_text</item>
         <item name="android:textSize">@dimen/text_label</item>
+        <item name="backgroundTint">@color/button_tonal_bg</item>
+        <item name="rippleColor">@color/ripple_on_surface</item>
+        <item name="strokeWidth">0dp</item>
     </style>
 
     <!-- 终端控制键行（可横向滑动） -->
@@ -478,24 +495,17 @@
     </style>
 
 
-    <!-- ==================== 对话框形状 ==================== -->
-
-    <!-- 对话框圆角与卡片保持一致 -->
-    <style name="ShapeAppearance.CasdonLink.Dialog" parent="ShapeAppearance.Material3.Corner.ExtraLarge">
-        <item name="cornerSize">20dp</item>
-    </style>
-
-
     <!-- ==================== 输入框样式 ==================== -->
 
     <style name="Widget.CasdonLink.EditText" parent="Widget.CasdonLink">
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">@dimen/control_height</item>
+        <item name="android:layout_height">@dimen/text_field_height</item>
         <item name="android:background">@drawable/bg_input</item>
+        <item name="android:gravity">center_vertical</item>
         <item name="android:paddingStart">@dimen/field_padding_horizontal</item>
         <item name="android:paddingEnd">@dimen/field_padding_horizontal</item>
         <item name="android:singleLine">true</item>
-        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColor">@color/on_surface</item>
         <item name="android:textColorHint">@color/text_hint</item>
         <item name="android:textSize">@dimen/text_body_large</item>
     </style>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tonal 按钮/图标按钮文字色：启用 onSurfaceVariant，禁用 38%。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:color="@color/on_surface_variant"
+        android:state_enabled="true" />
+    <item
+        android:alpha="0.38"
+        android:color="@color/on_surface_variant" />
+</selector>

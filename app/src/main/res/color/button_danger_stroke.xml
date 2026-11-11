@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 危险操作描边：启用 error，禁用 onSurface 12%。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:color="@color/error"
+        android:state_enabled="true" />
+    <item
+        android:alpha="0.12"
+        android:color="@color/on_surface" />
+</selector>

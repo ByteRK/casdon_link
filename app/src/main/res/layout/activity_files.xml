@@ -5,7 +5,7 @@
     android:id="@+id/filesRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background">
+    android:background="@color/surface">
 
     <LinearLayout style="@style/Widget.CasdonLink.Screen.Column">
 
@@ -61,6 +61,8 @@
         android:layout_marginBottom="@dimen/space_xl"
         android:contentDescription="更多操作"
         android:src="@drawable/ic_menu_lines"
-        app:backgroundTint="@color/primary"
-        app:tint="@color/background" />
+        app:backgroundTint="@color/primary_container"
+        app:elevation="0dp"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.CasdonLink.Large"
+        app:tint="@color/on_primary_container" />
 </FrameLayout>
