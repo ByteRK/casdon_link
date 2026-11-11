@@ -52,6 +52,12 @@ class DeviceStore(context: Context) {
         write(getAll().filterNot { it.ipAddress == host && it.port == port })
     }
 
+    /** 清空全部设备记录（含已保存密码）。 */
+    fun clear() = write(emptyList())
+
+    /** 只清除所有已保存密码，保留设备别名、地址与最近连接时间。 */
+    fun clearPasswords() = write(getAll().map { it.copy(password = "") })
+
     private fun write(records: List<DeviceRecord>) {
         val array = JSONArray()
         records.forEach {

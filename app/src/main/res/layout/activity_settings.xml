@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/settingsRoot"
+    style="@style/Widget.CasdonLink.Screen.Column"
+    tools:context=".SettingsActivity">
+
+    <LinearLayout style="@style/Widget.CasdonLink.Toolbar">
+
+        <Button
+            android:id="@+id/settingsBack"
+            style="@style/Widget.CasdonLink.Button.Icon"
+            android:contentDescription="返回首页"
+            android:text="‹" />
+
+        <TextView
+            android:id="@+id/settingsTitle"
+            style="@style/Text.CasdonLink.ToolbarTitle"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:text="设置" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="@dimen/screen_padding_bottom">
+
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:text="终端" />
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_sm">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="终端字号" />
+
+                <TextView
+                    android:id="@+id/settingsFontValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <Button
+                    android:id="@+id/settingsFontButton"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="修改字号" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:layout_marginTop="@dimen/space_lg"
+                    android:text="命令历史" />
+
+                <TextView
+                    android:id="@+id/settingsHistoryValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <Button
+                    android:id="@+id/settingsClearHistory"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="清空命令历史" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:layout_marginTop="@dimen/space_2xl"
+                android:text="数据与缓存" />
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_sm">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="最近设备" />
+
+                <TextView
+                    android:id="@+id/settingsDeviceValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <Button
+                    android:id="@+id/settingsClearDevices"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="清空全部设备记录" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:layout_marginTop="@dimen/space_lg"
+                    android:text="已保存密码" />
+
+                <TextView
+                    android:id="@+id/settingsPasswordValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <Button
+                    android:id="@+id/settingsClearPasswords"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="清除全部已保存密码" />
+            </LinearLayout>
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="修复包缓存" />
+
+                <TextView
+                    android:id="@+id/settingsCacheValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <Button
+                    android:id="@+id/settingsClearCache"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="清理缓存" />
+            </LinearLayout>
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="授权记录" />
+
+                <TextView
+                    android:id="@+id/settingsLicenseValue"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/settingsViewLicense"
+                        style="@style/Widget.CasdonLink.Button.Small"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="查看" />
+
+                    <Button
+                        android:id="@+id/settingsExportLicense"
+                        style="@style/Widget.CasdonLink.Button.Small"
+                        android:layout_width="0dp"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:text="导出" />
+
+                    <Button
+                        android:id="@+id/settingsClearLicense"
+                        style="@style/Widget.CasdonLink.Button.Small"
+                        android:layout_width="0dp"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:text="清空" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="导出文件包含完整授权码，请按敏感文件保管。" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:layout_marginTop="@dimen/space_2xl"
+                android:text="诊断" />
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_sm">
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:text="连接诊断日志" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="10dp"
+                    android:text="最近一次连接/操作的内存日志，可复制或分享。" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/settingsViewDiagnostics"
+                        style="@style/Widget.CasdonLink.Button.Small"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="查看/分享" />
+
+                    <Button
+                        android:id="@+id/settingsClearDiagnostics"
+                        style="@style/Widget.CasdonLink.Button.Small"
+                        android:layout_width="0dp"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:text="清空" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Text.CasdonLink.Label"
+                    android:layout_marginTop="@dimen/space_lg"
+                    android:text="授权服务" />
+
+                <TextView
+                    android:id="@+id/settingsAuthStatus"
+                    style="@style/Text.CasdonLink.MultilineBody"
+                    android:layout_marginTop="10dp"
+                    android:text="未检测" />
+
+                <Button
+                    android:id="@+id/settingsCheckAuth"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="检测授权服务" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/Text.CasdonLink.Eyebrow"
+                android:layout_marginTop="@dimen/space_2xl"
+                android:text="关于" />
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_sm">
+
+                <TextView
+                    android:id="@+id/settingsAbout"
+                    style="@style/Text.CasdonLink.MultilineBody" />
+
+                <TextView
+                    android:id="@+id/settingsPackageKey"
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="@dimen/space_sm" />
+
+                <Button
+                    android:id="@+id/settingsCopyVersion"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="复制版本信息" />
+
+                <Button
+                    android:id="@+id/settingsPrivacy"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="隐私说明" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

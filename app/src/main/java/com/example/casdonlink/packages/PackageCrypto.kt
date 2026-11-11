@@ -32,6 +32,9 @@ class PackageVerifier private constructor(
     val keyId: Int,
     private val kek: ByteArray
 ) {
+    /** 公钥指纹前 4 字节的 8 位十六进制表示，用于设置页/排障展示。 */
+    val keyIdHex: String = keyId.toUInt().toString(16).padStart(8, '0')
+
     fun verify(signed: ByteArray, signature: ByteArray): Boolean = runCatching {
         val verifier = Signature.getInstance("SHA256withRSA")
         verifier.initVerify(publicKey)
@@ -129,8 +132,10 @@ class PackageVerifier private constructor(
  * 验签在解密之前；签名有效但内容 hash/GCM 失败时仍拒绝。
  */
 object PackageCrypto {
+    /** 当前 `.clpkg` 容器版本；设置页展示用。 */
+    const val FORMAT_VERSION = 2
+
     private val MAGIC = "CLPKG2".toByteArray(Charsets.US_ASCII)
-    private const val VERSION = 2
     private const val HEADER_BYTES = 499
     private const val SIGNED_BYTES = 115
     private const val KEY_ID_OFFSET = 7
@@ -155,7 +160,7 @@ object PackageCrypto {
             if (!header.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) {
                 throw PackageDecryptException("不是有效的加密修复包（.clpkg）")
             }
-            if (header[MAGIC.size].toInt() != VERSION) {
+            if (header[MAGIC.size].toInt() != FORMAT_VERSION) {
                 throw PackageDecryptException("不支持的修复包版本")
             }
             val keyId = ByteBuffer.wrap(header, KEY_ID_OFFSET, 4)

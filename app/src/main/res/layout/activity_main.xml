@@ -8,26 +8,41 @@
 
     <LinearLayout style="@style/Widget.CasdonLink.Screen.ScrollContent">
 
-        <!-- 左上角标题区：整块承接完整功能的六连击手势，小屏上也有足够点击面积。 -->
+        <!-- 左上角标题区承接完整功能六连击手势；齿轮放在标题区外侧，避免点击被手势吞掉。 -->
         <LinearLayout
-            android:id="@+id/mainTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:gravity="top"
+            android:orientation="horizontal">
 
-            <TextView
-                style="@style/Text.CasdonLink.Eyebrow"
-                android:text="CASDON LINK" />
+            <LinearLayout
+                android:id="@+id/mainTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                style="@style/Text.CasdonLink.HeroTitle"
-                android:layout_marginTop="@dimen/space_sm"
-                android:text="设备连接" />
+                <TextView
+                    style="@style/Text.CasdonLink.Eyebrow"
+                    android:text="CASDON LINK" />
 
-            <TextView
-                style="@style/Text.CasdonLink.Subtitle"
-                android:layout_marginTop="6dp"
-                android:text="局域网维护终端" />
+                <TextView
+                    style="@style/Text.CasdonLink.HeroTitle"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="设备连接" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.Subtitle"
+                    android:layout_marginTop="6dp"
+                    android:text="局域网维护终端" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/settingsButton"
+                style="@style/Widget.CasdonLink.Button.IconImage"
+                android:layout_marginStart="@dimen/space_md"
+                android:contentDescription="设置"
+                android:src="@drawable/ic_settings" />
         </LinearLayout>
 
         <LinearLayout

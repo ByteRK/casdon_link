@@ -15,6 +15,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -80,6 +81,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.connectButton).setOnLongClickListener {
             showDiagnostics("连接诊断日志", null)
             true
+        }
+        findViewById<ImageButton>(R.id.settingsButton).setOnClickListener {
+            startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
         }
         findViewById<Button>(R.id.diagnoseButton).setOnClickListener {
             val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()

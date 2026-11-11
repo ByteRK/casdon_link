@@ -45,6 +45,9 @@ class LicenseHistoryStore(context: Context) {
 
     fun count(): Int = all().size
 
+    /** 清空全部授权记录；授权码密文一并删除。 */
+    fun clear() = synchronized(lock) { writeLocked(emptyList()) }
+
     fun add(record: LicenseRecord) = synchronized(lock) {
         val records = readLocked().toMutableList()
         records.add(0, record)

@@ -388,6 +388,9 @@
     <!-- 次操作按钮（描边） -->
     <style name="Widget.CasdonLink.Button.Secondary" parent="Widget.CasdonLink.Button">
         <item name="android:background">@drawable/bg_input</item>
+        <!-- 不继承 Material 默认的 colorPrimary 背景着色，否则启用状态的次按钮会变成主色实心。 -->
+        <item name="android:backgroundTint">@null</item>
+        <item name="backgroundTint">@null</item>
         <item name="android:textColor">@color/text_primary</item>
     </style>
 
@@ -411,6 +414,15 @@
         <item name="android:padding">0dp</item>
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">@dimen/text_icon</item>
+    </style>
+
+    <!-- 图片图标按钮（首页右上角设置齿轮） -->
+    <style name="Widget.CasdonLink.Button.IconImage" parent="Widget.CasdonLink">
+        <item name="android:layout_width">@dimen/icon_button_width</item>
+        <item name="android:layout_height">@dimen/icon_button_height</item>
+        <item name="android:background">@drawable/bg_input</item>
+        <item name="android:padding">@dimen/space_md</item>
+        <item name="android:scaleType">centerInside</item>
     </style>
 
     <!-- 行内固定宽度主按钮（终端发送） -->
