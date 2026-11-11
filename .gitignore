@@ -25,5 +25,9 @@ Thumbs.db
 node_modules/
 frontend/dist/
 
+# 加密修复包与打包产物；测试夹具保留
+*.clpkg
+!app/src/test/resources/*.clpkg
+
 # Compiled class files
 patch

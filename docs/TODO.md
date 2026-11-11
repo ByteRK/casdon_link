@@ -2,7 +2,7 @@
 
 > 生成时间：2026-11-11
 >
-> 基线：1.11.0（commit `2858512`）
+> 生成基线：1.11.0（commit `2858512`）；PKG-01 已在 2.0.0 实施。
 >
 > 范围：基于当前代码、[1.8.0 测试报告](TEST_REPORT_1.8.0.md)、[1.10.1 测试报告](TEST_REPORT_1.10.1.md) 与[技术方案](TECHNICAL_DESIGN.md)整理的可执行改进项；不包含已完成的“补发成功后从设备重新读取授权”改动。
 >
@@ -95,17 +95,18 @@
   - **移除裸 ZIP**：包改为加密容器 `.clpkg`，AES-256-GCM + PBKDF2-HMAC-SHA256，导入时输入密码；提供打包/解包脚本。
   - 独立发布者签名暂缓：密码 + AEAD 已提供完整性与访问控制；需要区分打包人时再加。
   - 最近包列表后续再做；本期先做缓存保留上限。
-- [ ] 定义 `.clpkg` 格式：magic/version/iterations/salt/nonce + AES-256-GCM 密文；AAD 覆盖头部。
-- [ ] 新增 `PackageCrypto`：PBKDF2-HMAC-SHA256（210,000 次）、流式解密到临时 ZIP；密码错误/包损坏给出明确提示。
-- [ ] `PackageActivity` 导入流程：选择 `.clpkg` → 输入密码 → 解密到临时 ZIP → 复用现有 ZIP 校验/解包；导入失败不退出，可重试或重选。
-- [ ] 移除裸 ZIP 入口：文件选择器不再接受裸 ZIP；选中非 `.clpkg`/无 magic 的文件提示“不是有效的加密修复包”。
-- [ ] 提供 `tools/pack-repair-package.ps1`、`tools/unpack-repair-package.ps1`，支持目录或 ZIP 作为输入、密码提示/参数、格式校验与往返测试。
-- [ ] 执行中禁止主动停止：拦截返回键和返回按钮；`PackageActivity` 锁定竖屏，保留 `FLAG_KEEP_SCREEN_ON`。
-- [ ] 失败二次弹窗：命中失败步骤后弹出“从失败处继续 / 从头开始 / 关闭”，保留已成功步骤状态；`continueOnError` 的失败在完成后同样汇总。
-- [ ] 顶部显示“当前/总数”；完成后汇总成功/失败/未执行/耗时。
-- [ ] 导入失败保留页面可重选；展示包 ID、版本、步骤数。
-- [ ] 缓存治理：保留最近 N 个 `repair_packages/pkg_*`（默认 5 个），导入成功后清理更早的目录。
-- [ ] 执行报告：生成文本/JSON 摘要（包信息、步骤状态、错误、耗时），支持复制/分享（可放后续小版本）。
+- [x] 定义 `.clpkg` 格式：magic/version/iterations/salt/nonce + AES-256-GCM 密文；AAD 覆盖头部。
+- [x] 新增 `PackageCrypto`：PBKDF2-HMAC-SHA256（210,000 次）、流式解密到临时 ZIP；密码错误/包损坏给出明确提示。
+- [x] `PackageActivity` 导入流程：选择 `.clpkg` → 输入密码 → 解密到临时 ZIP → 复用现有 ZIP 校验/解包；导入失败不退出，可重试或重选。
+- [x] 移除裸 ZIP 入口：文件选择器不再接受裸 ZIP；选中非 `.clpkg`/无 magic 的文件提示“不是有效的加密修复包”。
+- [x] 提供 `tools/pack-repair-package.ps1`、`tools/unpack-repair-package.ps1`，支持目录或 ZIP 作为输入、密码提示/参数、格式校验与往返测试。
+- [x] 执行中禁止主动停止：拦截返回键和返回按钮；`PackageActivity` 锁定竖屏，保留 `FLAG_KEEP_SCREEN_ON`。
+- [x] 失败二次弹窗：命中失败步骤后弹出“从失败处继续 / 从头开始 / 关闭”，保留已成功步骤状态；`continueOnError` 的失败在完成后同样汇总。
+- [x] 顶部显示“当前/总数”；完成后汇总成功/失败/未执行/耗时。
+- [x] 导入失败保留页面可重选；展示包 ID、版本、步骤数。
+- [x] 缓存治理：保留最近 N 个 `repair_packages/pkg_*`（默认 5 个），导入成功后清理更早的目录。
+- [ ] 执行报告：生成文本/JSON 摘要（包信息、步骤状态、错误、耗时），支持复制/分享（本期暂缓，放后续小版本）。
+- 实现记录（2.0.0）：加密容器/脚本/密码导入、执行中禁止停止、失败二次弹窗、当前/总数与汇总、缓存保留 5 个已完成；执行报告、最近包列表、独立签名暂缓。
 - 验收：裸 ZIP 无法导入；正确密码可导入并执行；错误密码有明确提示；执行中返回被拦截；失败后可选择继续方式；缓存不超过上限。
 - 规模：L；加密容器与脚本需同步修改，属于不兼容格式变更，版本按规范走 MAJOR。
 
@@ -179,7 +180,7 @@
   - 修法：传输用随机 ASCII token 路径（如 `/t/<uuid>`），或统一 URL 编码/解码；顺带避免同网段他人猜文件名。
   - 验收：中文文件名、带空格文件名上传与修复包传输成功。
 
-- [ ] **Q-04 修复包执行中返回会直接中断** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
+- [x] **Q-04 修复包执行中返回会直接中断** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
   - 修法：执行中拦截返回键/返回按钮并提示“执行中不能停止”；锁定竖屏 + 常亮（详见 PKG-01）。
   - 验收：执行中按返回不会结束页面或中断步骤。
 
@@ -192,7 +193,7 @@
   - 修法：排除 `file` 域的 `license_records.json`、`repair_packages/`；或直接 `allowBackup=false`（按需求定）。
   - 验收：备份清单中不出现上述文件。
 
-- [ ] **Q-07 修复包缓存无限增长** —— [PackageImporter.kt](../app/src/main/java/com/example/casdonlink/packages/PackageImporter.kt)
+- [x] **Q-07 修复包缓存无限增长** —— [PackageImporter.kt](../app/src/main/java/com/example/casdonlink/packages/PackageImporter.kt)
   - 修法：保留最近 N 个包或总容量上限；删除时清理目录与 metadata。
   - 验收：连续导入多次后缓存不超过上限。
 
@@ -201,7 +202,7 @@
   - 修法：复用 `NetworkDiagnostics.localEndpoints`，选择与目标设备同网段的地址；仍无匹配时提示。
   - 验收：开启 VPN 后上传仍走 Wi-Fi 地址。
 
-- [ ] **Q-09 修复包导入失败直接退出** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
+- [x] **Q-09 修复包导入失败直接退出** —— [PackageActivity.kt](../app/src/main/java/com/example/casdonlink/PackageActivity.kt)
   - 修法：catch 中保留页面，展示错误与“重新选择”。
   - 验收：选到非法 ZIP 后可立即重选，不用退出重进。
 
@@ -251,11 +252,11 @@
 
 ### 5.5 修复包页
 
-- [ ] 顶部进度改为“当前/总数”。
-- [ ] 有 `continueOnError` 失败时不要统一提示“修复步骤已完成”，给出成功/失败/跳过统计。
-- [ ] 导入失败保留页面可重选。
-- [ ] 执行中显示整体耗时与当前步骤。
-- [ ] 停止、返回拦截、失败二次弹窗、加密导入（PKG-01）。
+- [x] 顶部进度改为“当前/总数”。
+- [x] 有 `continueOnError` 失败时不要统一提示“修复步骤已完成”，给出成功/失败/跳过统计。
+- [x] 导入失败保留页面可重选。
+- [x] 执行中显示整体耗时与当前步骤。
+- [x] 停止、返回拦截、失败二次弹窗、加密导入（PKG-01）。
 
 ### 5.6 快捷操作 / 终端
 

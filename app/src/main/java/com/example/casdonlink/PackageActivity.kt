@@ -4,15 +4,22 @@ import android.animation.Animator
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
-import android.content.Intent
+import android.content.DialogInterface
+import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
+import android.widget.EditText
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -20,16 +27,19 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.example.casdonlink.files.PhoneHttpServer
-import com.example.casdonlink.files.LocalAddress
-import com.example.casdonlink.files.FileRepository
-import com.example.casdonlink.files.formatByteSize
 import com.example.casdonlink.connection.TelnetClient
+import com.example.casdonlink.files.FileRepository
+import com.example.casdonlink.files.LocalAddress
+import com.example.casdonlink.files.PhoneHttpServer
+import com.example.casdonlink.files.formatByteSize
+import com.example.casdonlink.packages.PackageCrypto
+import com.example.casdonlink.packages.PackageDecryptException
 import com.example.casdonlink.packages.PackageImporter
 import com.example.casdonlink.packages.RepairStep
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.example.casdonlink.ui.configureAsList
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -38,26 +48,46 @@ import java.io.File
 /** 执行中圆点的呼吸动效周期（单程）。 */
 private const val PULSE_DURATION_MS = 750L
 
+/**
+ * 修复包页：只接受加密容器 `.clpkg`，导入时输入密码；解密后的 ZIP 仍走原有
+ * 清单校验与解压流程。执行开始后不提供主动停止，失败时只允许选择继续方式。
+ */
 class PackageActivity : AppCompatActivity() {
-    private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importPackage(uri)
-    }
+    private val picker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) promptPassword(uri) }
+
     private var imported: PackageImporter.ImportedPackage? = null
     private var running = false
+    private var importing = false
+    private var lastUri: Uri? = null
+    private var passwordDialog: AlertDialog? = null
     private val states = mutableListOf<StepState>()
     private lateinit var stepAdapter: StepAdapter
+    private var runStartedAt = 0L
+    private var lastRunMs = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applyDarkSystemBars()
         setContentView(R.layout.activity_package)
-        // 一次修复可能持续数分钟，保持屏幕常亮，避免息屏后 Telnet 会话被系统回收。
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // 修复可能持续数分钟，保持屏幕常亮，避免息屏后 Telnet 会话被系统回收。
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // 进程被系统终止时，上次解密出的临时 ZIP 可能残留；启动时清理，避免明文包长期占用缓存。
+        cacheDir.listFiles { file -> file.isFile && file.name.startsWith("package_import_") }
+            ?.forEach { it.delete() }
         applySystemBarInsets()
         setUpStepList()
-        findViewById<Button>(R.id.packageBack).setOnClickListener { finish() }
-        findViewById<Button>(R.id.runPackage).setOnClickListener { confirmRun() }
-        picker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+
+        findViewById<Button>(R.id.packageBack).setOnClickListener { handleBack() }
+        findViewById<Button>(R.id.runPackage).setOnClickListener { onRunClicked() }
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = handleBack()
+        })
+
+        renderEmptyState()
+        updateControls()
+        picker.launch(arrayOf("*/*"))
     }
 
     /**
@@ -87,20 +117,409 @@ class PackageActivity : AppCompatActivity() {
         list.adapter = stepAdapter
     }
 
-    private fun importPackage(uri: android.net.Uri) {
+    private fun renderEmptyState() {
+        findViewById<TextView>(R.id.packageTitle).apply {
+            text = "修复包"
+            isSelected = true
+        }
+        findViewById<TextView>(R.id.packageDescription).text =
+            "请选择 .clpkg 加密修复包；导入时需要输入打包时设置的密码。"
+        findViewById<TextView>(R.id.packageProgress).text = "未选择"
+        states.clear()
+        renderSteps()
+    }
+
+    /** 选中文件后先要密码；密码只在本页内存中使用，不落盘。 */
+    private fun promptPassword(uri: Uri) {
+        if (running || importing) return
+        if (passwordDialog?.isShowing == true) return
+        lastUri = uri
+        val content = layoutInflater.inflate(R.layout.dialog_input, null)
+        val input = content.findViewById<EditText>(R.id.dialogInput).apply {
+            hint = "修复包密码"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("输入修复包密码")
+            .setMessage("该修复包已加密，请输入打包时设置的密码。")
+            .setView(content)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("解密导入", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val password = input.text.toString()
+                if (password.isEmpty()) {
+                    input.error = "请输入修复包密码"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                startImport(uri, password)
+            }
+        }
+        dialog.setOnDismissListener { passwordDialog = null }
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        passwordDialog = dialog
+        dialog.show()
+        input.requestFocus()
+    }
+
+    /** 解密到临时 ZIP，再交给 [PackageImporter] 做结构与清单校验。 */
+    private fun startImport(uri: Uri, password: String) {
+        if (importing || running) return
+        importing = true
+        updateControls()
+        val busy = showBusy("正在导入修复包", "正在解密并校验…")
         lifecycleScope.launch {
+            val temp = File(cacheDir, "package_import_${System.currentTimeMillis()}.zip")
+            var result: PackageImporter.ImportedPackage? = null
+            var failure: String? = null
             try {
-                val result = PackageImporter(this@PackageActivity).import(uri) { contentResolver.openInputStream(it) }
-                imported = result
-                states.clear(); states.addAll(result.manifest.steps.map { StepState(StepStatus.PENDING) })
-                findViewById<TextView>(R.id.packageTitle).text = "${result.manifest.name} · ${result.manifest.version}"
-                // 标题可能超出工具栏宽度，选中后由 marquee 横向滚动显示完整内容。
-                findViewById<TextView>(R.id.packageTitle).isSelected = true
-                findViewById<TextView>(R.id.packageDescription).text = "${result.manifest.description}\n共 ${result.manifest.steps.size} 个步骤"
-                renderSteps()
-            } catch (error: Exception) { toast(error.message ?: "导入失败"); finish() }
+                result = withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        PackageCrypto.decryptToZip(input, password.toCharArray(), temp)
+                    } ?: throw PackageDecryptException("无法读取所选文件")
+                    PackageImporter(this@PackageActivity).importZip(temp)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                failure = friendlyImportError(error)
+            } finally {
+                temp.delete()
+                busy.dismiss()
+                importing = false
+                if (!isFinishing && !isDestroyed) updateControls()
+            }
+            val loaded = result
+            if (loaded == null) {
+                showImportFailure(failure ?: "导入失败")
+                return@launch
+            }
+            imported = loaded
+            states.clear()
+            states.addAll(loaded.manifest.steps.map { StepState(StepStatus.PENDING) })
+            findViewById<TextView>(R.id.packageTitle).apply {
+                text = "${loaded.manifest.name} · ${loaded.manifest.version}"
+                isSelected = true
+            }
+            findViewById<TextView>(R.id.packageDescription).text = buildString {
+                if (loaded.manifest.description.isNotBlank()) {
+                    append(loaded.manifest.description).append('\n')
+                }
+                append("ID · ").append(loaded.manifest.packageId)
+                append(" · 共 ").append(loaded.manifest.steps.size).append(" 个步骤 · 加密包已导入")
+            }
+            findViewById<TextView>(R.id.packageProgress).text = "${states.size} 步"
+            renderSteps()
+            updateControls()
+            toast("修复包已导入")
         }
     }
+
+    private fun friendlyImportError(error: Exception): String = when (error) {
+        is PackageDecryptException -> error.message ?: "修复包解密失败"
+        is java.util.zip.ZipException -> "修复包 ZIP 无效：${error.message ?: "无法解析"}"
+        else -> error.message ?: error.javaClass.simpleName
+    }
+
+    private fun showImportFailure(message: String) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("导入失败")
+            .setMessage("$message\n\n请确认密码正确，或重新选择加密修复包（.clpkg）。")
+            .setPositiveButton("重试") { _, _ -> lastUri?.let { promptPassword(it) } }
+            .setNeutralButton("重新选择") { _, _ -> picker.launch(arrayOf("*/*")) }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showBusy(title: String, status: String): AlertDialog {
+        val view = layoutInflater.inflate(R.layout.dialog_transfer_progress, null)
+        view.findViewById<TextView>(R.id.transferTitle).text = title
+        view.findViewById<TextView>(R.id.transferStatus).text = status
+        view.findViewById<ProgressBar>(R.id.transferBar).isIndeterminate = true
+        return MaterialAlertDialogBuilder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+            .also { it.show() }
+    }
+
+    /** 没有包时打开选择器；有失败步骤时先让用户选择继续方式。 */
+    private fun onRunClicked() {
+        if (running || importing) return
+        val pkg = imported
+        if (pkg == null) {
+            picker.launch(arrayOf("*/*"))
+            return
+        }
+        val failed = states.indexOfFirst { it.status == StepStatus.FAILED }
+        if (failed >= 0) {
+            val success = states.count { it.status == StepStatus.SUCCESS }
+            val failedCount = states.count { it.status == StepStatus.FAILED }
+            val pending = states.count { it.status == StepStatus.PENDING }
+            // 如果失败步骤之后已有成功步骤，说明是 continueOnError 走完了流程；
+            // 此时“从失败处继续”会重复执行后面的成功步骤，只提供从头开始。
+            val hasSuccessAfterFailure = (failed + 1 until states.size)
+                .any { states[it].status == StepStatus.SUCCESS }
+            if (hasSuccessAfterFailure) {
+                showPartialSummary(success, failedCount, pending)
+            } else {
+                showFailureOptions(
+                    index = failed,
+                    message = states[failed].message ?: "上次执行未完成",
+                    success = success,
+                    failed = failedCount,
+                    pending = pending
+                )
+            }
+            return
+        }
+        if (states.any { it.status == StepStatus.SUCCESS }) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("再次执行？")
+                .setMessage("将从头重新执行全部 ${pkg.manifest.steps.size} 个步骤。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("从头开始") { _, _ -> startRun(0) }
+                .show()
+            return
+        }
+        confirmRun(pkg)
+    }
+
+    private fun confirmRun(pkg: PackageImporter.ImportedPackage) {
+        val summary = "包 ID · ${pkg.manifest.packageId}\n" +
+            "${pkg.manifest.name} · ${pkg.manifest.version}\n" +
+            "共 ${pkg.manifest.steps.size} 个步骤，将按顺序自动执行。\n" +
+            "开始后不能主动停止，请保持设备连接。"
+        MaterialAlertDialogBuilder(this)
+            .setTitle("确认执行？")
+            .setMessage(summary)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("执行") { _, _ -> startRun(0) }
+            .show()
+    }
+
+    /**
+     * 从 [startIndex] 开始执行；0 表示全部从头开始。失败后选择“从失败处继续”时
+     * 保留之前的成功状态，只重置失败步骤及其后的步骤。
+     */
+    private fun startRun(startIndex: Int) {
+        if (running) return
+        val pkg = imported ?: return
+        val total = pkg.manifest.steps.size
+        if (startIndex !in 0 until total) return
+        if (startIndex == 0) {
+            for (index in states.indices) states[index] = StepState(StepStatus.PENDING)
+        } else {
+            for (index in startIndex until states.size) states[index] = StepState(StepStatus.PENDING)
+        }
+        running = true
+        runStartedAt = System.currentTimeMillis()
+        updateProgress(startIndex, total)
+        renderSteps()
+        updateControls()
+
+        lifecycleScope.launch {
+            var repository: FileRepository? = null
+            var repositorySession: TelnetClient.Session? = null
+            var fatalIndex: Int? = null
+            var fatalMessage: String? = null
+            var currentIndex = startIndex
+            try {
+                for (index in startIndex until total) {
+                    currentIndex = index
+                    val step = pkg.manifest.steps[index]
+                    val session = try {
+                        DeviceSessionHolder.ensure() ?: throw IllegalStateException("设备连接已断开")
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        states[index] = StepState(StepStatus.FAILED, error.message ?: "设备连接已断开")
+                        fatalIndex = index
+                        fatalMessage = error.message ?: "设备连接已断开"
+                        renderSteps()
+                        break
+                    }
+                    val files = if (repository == null || repositorySession !== session) {
+                        FileRepository(session).also {
+                            repository = it
+                            repositorySession = session
+                        }
+                    } else {
+                        requireNotNull(repository)
+                    }
+                    states[index] = StepState(StepStatus.RUNNING)
+                    renderSteps()
+                    updateProgress(index + 1, total)
+                    try {
+                        when (step) {
+                            is RepairStep.Shell ->
+                                session.execute(step.command, step.timeoutSeconds * 1000)
+                            is RepairStep.File -> {
+                                val source = File(pkg.directory, step.source)
+                                val host = LocalAddress.find(this@PackageActivity)
+                                    ?: error("无法识别本机局域网地址")
+                                val server = PhoneHttpServer(source)
+                                // 绑定监听端口属于网络操作，必须在 IO 线程完成。
+                                val url = withContext(Dispatchers.IO) { server.start(host) }
+                                val startedAt = System.currentTimeMillis()
+                                try {
+                                    files.uploadFromHttp(
+                                        url = url,
+                                        target = step.target,
+                                        totalBytes = source.length(),
+                                        // 清单已登记哈希时在设备端复核，续传拼接错误会被立即发现。
+                                        expectedSha256 = step.sha256,
+                                        onProgress = { done, value ->
+                                            states[index] = StepState(
+                                                StepStatus.RUNNING,
+                                                meta = transferMeta(
+                                                    done,
+                                                    value,
+                                                    System.currentTimeMillis() - startedAt
+                                                )
+                                            )
+                                            renderSteps()
+                                        },
+                                        onRetry = { attempt, reason ->
+                                            states[index] = StepState(
+                                                StepStatus.RUNNING,
+                                                meta = "第 ${attempt + 1} 次尝试续传：$reason"
+                                            )
+                                            renderSteps()
+                                        }
+                                    )
+                                } finally {
+                                    server.close()
+                                }
+                            }
+                        }
+                        states[index] = StepState(StepStatus.SUCCESS)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        states[index] = StepState(StepStatus.FAILED, error.message ?: "未知错误")
+                        renderSteps()
+                        if (!step.continueOnError) {
+                            fatalIndex = index
+                            fatalMessage = error.message ?: error.javaClass.simpleName
+                            break
+                        }
+                    }
+                    renderSteps()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val index = currentIndex.coerceIn(0, total - 1)
+                if (states.getOrNull(index)?.status != StepStatus.FAILED) {
+                    states[index] = StepState(StepStatus.FAILED, error.message ?: "执行中断")
+                }
+                fatalIndex = index
+                fatalMessage = error.message ?: "执行中断"
+            } finally {
+                running = false
+                lastRunMs = System.currentTimeMillis() - runStartedAt
+                if (isFinishing || isDestroyed) return@launch
+                renderSteps()
+                updateControls()
+                val success = states.count { it.status == StepStatus.SUCCESS }
+                val failed = states.count { it.status == StepStatus.FAILED }
+                val pending = states.count { it.status == StepStatus.PENDING }
+                if (fatalIndex != null) {
+                    updateProgress(success + failed, total)
+                    showFailureOptions(
+                        index = fatalIndex!!,
+                        message = fatalMessage ?: "未知错误",
+                        success = success,
+                        failed = failed,
+                        pending = pending
+                    )
+                } else if (failed > 0) {
+                    updateProgress(success + failed, total)
+                    showPartialSummary(success, failed, pending)
+                } else {
+                    findViewById<TextView>(R.id.packageProgress).text = "全部完成 · $total 步"
+                    toast("修复步骤已完成")
+                }
+            }
+        }
+    }
+
+    /** 失败后的二次弹窗：只允许选择继续方式，不提供停止。 */
+    private fun showFailureOptions(
+        index: Int,
+        message: String,
+        success: Int,
+        failed: Int,
+        pending: Int
+    ) {
+        val step = imported?.manifest?.steps?.getOrNull(index)
+        val stepLabel = if (step != null) "步骤 ${index + 1}「${step.name}」" else "步骤 ${index + 1}"
+        MaterialAlertDialogBuilder(this)
+            .setTitle("修复未完成")
+            .setMessage(
+                "$stepLabel 失败：\n$message\n\n" +
+                    "成功 $success · 失败 $failed · 未执行 $pending\n" +
+                    "耗时 ${formatDuration(lastRunMs)}\n\n请选择继续方式。"
+            )
+            .setPositiveButton("从失败处继续") { _, _ -> startRun(index) }
+            .setNeutralButton("从头开始") { _, _ -> startRun(0) }
+            .setNegativeButton("关闭", null)
+            .setCancelable(false)
+            .show()
+    }
+
+    /** continueOnError 导致部分步骤失败但流程已走完时的汇总；不提供“从失败处继续”。 */
+    private fun showPartialSummary(success: Int, failed: Int, pending: Int) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("执行完成（有失败）")
+            .setMessage(
+                "成功 $success · 失败 $failed · 未执行 $pending\n" +
+                    "耗时 ${formatDuration(lastRunMs)}\n\n可从头重新执行全部步骤。"
+            )
+            .setPositiveButton("从头开始") { _, _ -> startRun(0) }
+            .setNegativeButton("关闭", null)
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun updateProgress(done: Int, total: Int) {
+        findViewById<TextView>(R.id.packageProgress).text = "$done/$total"
+    }
+
+    private fun updateControls() {
+        val run = findViewById<Button>(R.id.runPackage)
+        run.isEnabled = !running && !importing
+        run.text = when {
+            running -> "执行中…"
+            importing -> "导入中…"
+            imported == null -> "选择加密修复包"
+            states.any { it.status == StepStatus.FAILED } -> "重新执行"
+            else -> "执行修复"
+        }
+        findViewById<Button>(R.id.packageBack).alpha = if (running) 0.5f else 1f
+    }
+
+    private fun handleBack() {
+        if (running) {
+            toast("修复包执行中，不能停止")
+            return
+        }
+        if (importing) {
+            toast("正在导入修复包，请稍候")
+            return
+        }
+        finish()
+    }
+
+    private fun formatDuration(millis: Long): String {
+        val seconds = (millis / 1000).coerceAtLeast(0)
+        return if (seconds >= 60) "${seconds / 60} 分 ${seconds % 60} 秒" else "$seconds 秒"
+    }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     /** 状态变化时整份重新提交，DiffUtil 会把更新定位到具体行，不重建整个列表。 */
     private fun renderSteps() {
@@ -110,7 +529,6 @@ class PackageActivity : AppCompatActivity() {
                 StepRow(index, step, states.getOrElse(index) { StepState(StepStatus.PENDING) })
             }
         )
-        findViewById<TextView>(R.id.packageProgress).text = "${result.manifest.steps.size} 步"
     }
 
     /** 步骤状态：圆点资源与读屏文案随状态变化，列表不展示步骤内容。 */
@@ -207,97 +625,6 @@ class PackageActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmRun() {
-        val pkg = imported ?: run { picker.launch(arrayOf("*/*")); return }
-        // 步骤内容对使用者透明：弹窗只做二次确认，不列出命令或传输路径。
-        val summary = "${pkg.manifest.name} · ${pkg.manifest.version}\n" +
-            "共 ${pkg.manifest.steps.size} 个步骤，将按顺序自动执行。执行期间请保持设备连接。"
-        MaterialAlertDialogBuilder(this).setTitle("确认执行？").setMessage(summary)
-            .setNegativeButton("取消", null).setPositiveButton("执行") { _, _ -> runPackage() }.show()
-    }
-
-    private fun runPackage() {
-        if (running) return
-        val pkg = imported ?: return
-        running = true
-        findViewById<Button>(R.id.runPackage).isEnabled = false
-        lifecycleScope.launch {
-            // 同一次执行复用同一个仓库实例：目录可写探测与续传状态只需建立一次；
-            // 只有会话被自动重连替换时才新建，避免继续用已关闭的 socket。
-            var repository: FileRepository? = null
-            var repositorySession: TelnetClient.Session? = null
-            try {
-                for ((index, step) in pkg.manifest.steps.withIndex()) {
-                    // 选文件时应用会短暂进入后台，部分 ROM 会中止原连接；每步执行前确认会话可用。
-                    val session = DeviceSessionHolder.ensure()
-                        ?: throw IllegalStateException("设备连接已断开")
-                    val files = if (repository == null || repositorySession !== session) {
-                        FileRepository(session).also {
-                            repository = it
-                            repositorySession = session
-                        }
-                    } else {
-                        requireNotNull(repository)
-                    }
-                    states[index] = StepState(StepStatus.RUNNING); renderSteps()
-                    try {
-                        when (step) {
-                            is RepairStep.Shell -> session.execute(step.command, step.timeoutSeconds * 1000)
-                            is RepairStep.File -> {
-                                val source = File(pkg.directory, step.source)
-                                val host = LocalAddress.find(this@PackageActivity) ?: error("无法识别本机局域网地址")
-                                val server = PhoneHttpServer(source)
-                                // 绑定监听端口属于网络操作，必须在 IO 线程完成。
-                                val url = withContext(Dispatchers.IO) { server.start(host) }
-                                val startedAt = System.currentTimeMillis()
-                                try {
-                                    files.uploadFromHttp(
-                                        url = url,
-                                        target = step.target,
-                                        totalBytes = source.length(),
-                                        // 清单已登记哈希时在设备端复核，续传拼接错误会被立即发现。
-                                        expectedSha256 = step.sha256,
-                                        onProgress = { done, total ->
-                                            states[index] = StepState(
-                                                StepStatus.RUNNING,
-                                                meta = transferMeta(done, total, System.currentTimeMillis() - startedAt)
-                                            )
-                                            renderSteps()
-                                        },
-                                        onRetry = { attempt, reason ->
-                                            states[index] = StepState(
-                                                StepStatus.RUNNING,
-                                                meta = "第 ${attempt + 1} 次尝试续传：$reason"
-                                            )
-                                            renderSteps()
-                                        }
-                                    )
-                                } finally {
-                                    server.close()
-                                }
-                            }
-                        }
-                        states[index] = StepState(StepStatus.SUCCESS)
-                    } catch (error: Exception) {
-                        states[index] = StepState(StepStatus.FAILED, error.message ?: "未知错误")
-                        renderSteps()
-                        if (!step.continueOnError) throw error
-                    }
-                    renderSteps()
-                }
-                toast("修复步骤已完成")
-            } catch (error: Exception) { toast(error.message ?: "执行中断") }
-            finally {
-                running = false
-                findViewById<Button>(R.id.runPackage).isEnabled = true
-            }
-        }
-    }
-
-    /**
-     * 步骤第二行的传输进度：已传 / 总量 · 百分比 · 平均速度。
-     * 现场需要区分「慢」与「卡死」，只显示已传字节不足以判断，因此速率一起给出。
-     */
     private fun transferMeta(done: Long, total: Long, elapsedMs: Long): String = buildString {
         append(formatByteSize(done))
         if (total > 0) {
@@ -307,6 +634,4 @@ class PackageActivity : AppCompatActivity() {
         val seconds = (elapsedMs / 1000.0).coerceAtLeast(0.001)
         append(" · ").append(formatByteSize((done / seconds).toLong())).append("/s")
     }
-
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 }
