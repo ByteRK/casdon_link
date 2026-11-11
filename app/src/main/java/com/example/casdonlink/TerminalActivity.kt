@@ -3,7 +3,9 @@ package com.example.casdonlink
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -17,10 +19,15 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.TerminalHistoryStore
+import com.example.casdonlink.data.TerminalSettingsStore
 import com.example.casdonlink.ui.applyDarkSystemBars
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class TerminalActivity : AppCompatActivity() {
     private var session: TelnetClient.Session? = null
@@ -37,6 +44,7 @@ class TerminalActivity : AppCompatActivity() {
     /** 历史游标，等于 history.size 表示停在最新（空）行。 */
     private var historyIndex = 0
     private lateinit var historyStore: TerminalHistoryStore
+    private lateinit var settingsStore: TerminalSettingsStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,8 +55,10 @@ class TerminalActivity : AppCompatActivity() {
         input = findViewById(R.id.commandInput)
         // 命令历史持久化在 SharedPreferences，重启 App 后仍可继续回放。
         historyStore = TerminalHistoryStore(this)
+        settingsStore = TerminalSettingsStore(this)
         history.addAll(historyStore.load().takeLast(MAX_HISTORY))
         historyIndex = history.size
+        applyFontSize(settingsStore.fontSize())
         // 旋转/重建时恢复输出与未发送的输入；输出最多保存 MAX_OUTPUT_CHARS 字符。
         savedInstanceState?.getString(KEY_OUTPUT)?.let { output.text = it }
         savedInstanceState?.getString(KEY_INPUT)?.let {
@@ -58,6 +68,7 @@ class TerminalActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
         // 主机名/标题过长时用 marquee 横向滚动，短标题不会滚动。
         findViewById<TextView>(R.id.terminalTitle).isSelected = true
+        findViewById<TextView>(R.id.connectionState).text = "已连接 · ${timeText()}"
         findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
         if (!DeviceSessionHolder.hasTarget()) {
             Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
@@ -67,6 +78,10 @@ class TerminalActivity : AppCompatActivity() {
         session = DeviceSessionHolder.session()
         startReader()
         findViewById<Button>(R.id.sendCommandButton).setOnClickListener { sendCommand() }
+        findViewById<Button>(R.id.terminalClear).setOnClickListener { clearOutput() }
+        findViewById<Button>(R.id.terminalCopyAll).setOnClickListener { copyAllOutput() }
+        findViewById<Button>(R.id.terminalShare).setOnClickListener { shareOutput() }
+        findViewById<Button>(R.id.terminalFont).setOnClickListener { showFontSizePicker() }
         setUpControlKeys()
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
@@ -95,8 +110,6 @@ class TerminalActivity : AppCompatActivity() {
         bindInsertKey(R.id.keyTilde, "~")
         findViewById<Button>(R.id.keyHistoryPrev).setOnClickListener { recallHistory(-1) }
         findViewById<Button>(R.id.keyHistoryNext).setOnClickListener { recallHistory(+1) }
-        findViewById<Button>(R.id.keyClear).setOnClickListener { clearOutput() }
-        findViewById<Button>(R.id.keyCopyAll).setOnClickListener { copyAllOutput() }
     }
 
     /** 直接向设备发送控制字符（中断、补全、清屏等），不改动输入框内容。 */
@@ -207,7 +220,7 @@ class TerminalActivity : AppCompatActivity() {
                 stopReader()
                 monitorJob?.cancel()
                 session = restored
-                findViewById<TextView>(R.id.connectionState).text = "连接已恢复"
+                findViewById<TextView>(R.id.connectionState).text = "连接已恢复 · ${timeText()}"
                 startReader()
                 startMonitor()
             } finally {
@@ -273,6 +286,45 @@ class TerminalActivity : AppCompatActivity() {
         clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink 终端输出", text))
         toast("已复制全部输出（${text.length} 字符）")
     }
+
+    /** 把当前终端输出交给系统分享面板。 */
+    private fun shareOutput() {
+        val text = output.text.toString()
+        if (text.isBlank()) {
+            toast("终端暂无输出")
+            return
+        }
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, "CasdonLink 终端输出")
+            .putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(intent, "分享终端输出"))
+    }
+
+    /** 字号设置：跟随系统使用样式默认字号，其余档位按 sp 缩放，选择持久化。 */
+    private fun showFontSizePicker() {
+        val options = TerminalSettingsStore.FontSize.values()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("终端字号")
+            .setSingleChoiceItems(options.map { it.label }.toTypedArray(), settingsStore.fontSize().ordinal) { dialog, which ->
+                val size = options[which]
+                settingsStore.setFontSize(size)
+                applyFontSize(size)
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun applyFontSize(size: TerminalSettingsStore.FontSize) {
+        findViewById<Button>(R.id.terminalFont).text = "字号 · ${size.label}"
+        if (size.sp != null) {
+            output.setTextSize(TypedValue.COMPLEX_UNIT_SP, size.sp)
+        } else {
+            output.setTextSize(TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.text_label))
+        }
+    }
+
+    private fun timeText(): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
 
     /**
      * 滚动到最新输出。

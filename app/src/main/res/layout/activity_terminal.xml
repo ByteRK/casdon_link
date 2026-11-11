@@ -24,6 +24,49 @@
             android:text="已连接" />
     </LinearLayout>
 
+    <!-- 终端工具栏：清屏/复制全部/分享输出/字号；只影响手机侧显示，不向设备发送命令。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_sm"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/terminalClear"
+            style="@style/Widget.CasdonLink.Button.Small"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="清屏" />
+
+        <Button
+            android:id="@+id/terminalCopyAll"
+            style="@style/Widget.CasdonLink.Button.Small"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/space_sm"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="复制全部" />
+
+        <Button
+            android:id="@+id/terminalShare"
+            style="@style/Widget.CasdonLink.Button.Small"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/space_sm"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="分享输出" />
+
+        <Button
+            android:id="@+id/terminalFont"
+            style="@style/Widget.CasdonLink.Button.Small"
+            android:layout_width="0dp"
+            android:layout_marginStart="@dimen/space_sm"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="字号" />
+    </LinearLayout>
+
     <ScrollView
         android:id="@+id/terminalScroll"
         android:layout_width="match_parent"
@@ -113,19 +156,6 @@
                 android:id="@+id/keyTilde"
                 style="@style/Widget.CasdonLink.Button.Key"
                 android:text="~" />
-
-            <!-- 本地缓冲操作：清屏只清手机侧显示，复制全部导出当前终端输出。 -->
-            <Button
-                android:id="@+id/keyClear"
-                style="@style/Widget.CasdonLink.Button.Key"
-                android:contentDescription="清空本地终端显示"
-                android:text="清屏" />
-
-            <Button
-                android:id="@+id/keyCopyAll"
-                style="@style/Widget.CasdonLink.Button.Key"
-                android:contentDescription="复制全部终端输出"
-                android:text="复制全部" />
         </LinearLayout>
     </HorizontalScrollView>
 

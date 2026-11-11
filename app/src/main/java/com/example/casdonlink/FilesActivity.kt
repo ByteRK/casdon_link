@@ -3,6 +3,7 @@ package com.example.casdonlink
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -22,6 +23,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.casdonlink.connection.Diagnostics
@@ -43,6 +45,8 @@ class FilesActivity : AppCompatActivity() {
     private var files = emptyList<DeviceFile>()
     private lateinit var fileAdapter: FileAdapter
     private var activeHttpServer: PhoneHttpServer? = null
+    /** 旋转重建后待恢复的列表位置；-1 表示当前没有待恢复位置。 */
+    private var pendingScroll = -1
     /** 等待 SAF「保存到…」返回的目标文件内容；一次只能保存一个文件。 */
     private var pendingSaveBytes: ByteArray? = null
     private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
@@ -83,6 +87,11 @@ class FilesActivity : AppCompatActivity() {
         // 上传、新建文件/文件夹、退出都收进右下角浮空按钮，顶部只保留导航。
         findViewById<View>(R.id.filesFab).setOnClickListener { showActionMenu(it) }
         setUpFileList()
+        // 旋转/重建时保留当前目录与列表位置；列表内容重新从设备读取。
+        savedInstanceState?.let {
+            path = it.getString(KEY_PATH) ?: path
+            pendingScroll = it.getInt(KEY_SCROLL, 0)
+        }
         load(path)
     }
 
@@ -179,6 +188,15 @@ class FilesActivity : AppCompatActivity() {
             files.forEach { add(FileRow.Entry(it)) }
         }
         fileAdapter.submitList(rows)
+        // 旋转重建后列表内容异步读回，等提交完成再把位置还原到原来的可视行。
+        if (pendingScroll >= 0 && rows.isNotEmpty()) {
+            val target = pendingScroll.coerceAtMost(rows.lastIndex)
+            pendingScroll = -1
+            val list = findViewById<RecyclerView>(R.id.fileList)
+            list.post {
+                (list.layoutManager as? LinearLayoutManager)?.scrollToPosition(target)
+            }
+        }
     }
 
     private fun navigateUp() {
@@ -231,12 +249,7 @@ class FilesActivity : AppCompatActivity() {
     }
 
     /** 设备端文件名校验：与 shell 参数拼接方式保持一致，拒绝会改变路径含义的输入。 */
-    private fun validateName(name: String): String? = when {
-        name.isBlank() -> "名称不能为空"
-        name == "." || name == ".." -> "名称无效"
-        name.contains('/') -> "名称不能包含 /"
-        else -> null
-    }
+    private fun validateName(name: String): String? = validateFileName(name)
 
     /** 退出文件页，回到上一页面（设备状态页）。 */
     private fun exitToDevice() {
@@ -348,25 +361,50 @@ class FilesActivity : AppCompatActivity() {
      * 上传前先处理同名文件：同名目录直接拒绝；同名文件二次确认后才覆盖，
      * 避免误把设备上的原文件替换掉。
      */
+    /**
+     * 上传前先让用户确认/修改设备端文件名：默认取系统文件选择器里的显示名，
+     * 名称非法时留在弹窗内提示；同名目录直接拒绝，同名文件二次确认后才覆盖。
+     */
     private fun upload(uri: Uri) {
-        lifecycleScope.launch {
-            val targetName = displayName(uri)
-            val existing = files.firstOrNull { it.name == targetName }
-            if (existing?.directory == true) {
-                toast("已存在同名目录，无法上传文件")
-                return@launch
-            }
-            if (existing != null) {
-                MaterialAlertDialogBuilder(this@FilesActivity)
-                    .setTitle("覆盖同名文件？")
-                    .setMessage("当前目录已存在 $targetName，继续上传会覆盖原文件。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("覆盖") { _, _ -> startUpload(uri, targetName) }
-                    .show()
-                return@launch
-            }
-            startUpload(uri, targetName)
+        val defaultName = displayName(uri)
+        val content = layoutInflater.inflate(R.layout.dialog_input, null)
+        val field = content.findViewById<EditText>(R.id.dialogInput).apply {
+            setText(defaultName)
+            setSelection(defaultName.length)
+            hint = "设备端文件名"
         }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("上传到 $path")
+            .setView(content)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("上传", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val targetName = field.text.toString().trim()
+                validateName(targetName)?.let {
+                    field.error = it
+                    return@setOnClickListener
+                }
+                val existing = files.firstOrNull { it.name == targetName }
+                if (existing?.directory == true) {
+                    field.error = "已存在同名目录，无法上传文件"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                if (existing != null) {
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("覆盖同名文件？")
+                        .setMessage("当前目录已存在 $targetName，继续上传会覆盖原文件。")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("覆盖") { _, _ -> startUpload(uri, targetName) }
+                        .show()
+                } else {
+                    startUpload(uri, targetName)
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun startUpload(uri: Uri, targetName: String) {
@@ -524,6 +562,14 @@ class FilesActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 旋转/重建时保留目录与滚动位置；列表内容会在 onCreate 重新读取。
+        outState.putString(KEY_PATH, path)
+        val layout = findViewById<RecyclerView>(R.id.fileList).layoutManager as? LinearLayoutManager
+        outState.putInt(KEY_SCROLL, layout?.findFirstVisibleItemPosition() ?: 0)
+    }
+
     private inner class FileAdapter(
         private val onOpen: (FileRow) -> Unit,
         private val onLongPress: (FileRow) -> Unit
@@ -583,5 +629,20 @@ class FilesActivity : AppCompatActivity() {
     private companion object {
         /** 文本预览最多展示的字符数；超出时提示下载完整文件。 */
         const val PREVIEW_CHARS = 8_000
+        /** 旋转重建时保存当前目录与列表位置。 */
+        const val KEY_PATH = "files_path"
+        const val KEY_SCROLL = "files_scroll"
     }
+}
+
+/**
+ * 设备端文件名校验：与 shell 参数拼接方式保持一致，拒绝会改变路径含义的输入。
+ * 抽成纯函数，便于单元测试；中文、空格等正常文件名允许通过。
+ */
+internal fun validateFileName(name: String): String? = when {
+    name.isBlank() -> "名称不能为空"
+    name == "." || name == ".." -> "名称无效"
+    name.contains('/') -> "名称不能包含 /"
+    name.any { it.code < 0x20 } -> "名称包含控制字符"
+    else -> null
 }
