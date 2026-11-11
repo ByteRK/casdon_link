@@ -43,8 +43,25 @@ class FilesActivity : AppCompatActivity() {
     private var files = emptyList<DeviceFile>()
     private lateinit var fileAdapter: FileAdapter
     private var activeHttpServer: PhoneHttpServer? = null
+    /** 等待 SAF「保存到…」返回的目标文件内容；一次只能保存一个文件。 */
+    private var pendingSaveBytes: ByteArray? = null
     private val picker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) upload(uri)
+    }
+    private val saveLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val bytes = pendingSaveBytes
+        pendingSaveBytes = null
+        if (uri == null || bytes == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("无法写入所选文件")
+                }
+            }.onSuccess { toast("已保存到所选位置") }
+                .onFailure { toast("保存失败：${it.message ?: "未知错误"}") }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,6 +78,8 @@ class FilesActivity : AppCompatActivity() {
         findViewById<Button>(R.id.filesBackButton).setOnClickListener { exitToDevice() }
         // 路径本身作为快捷入口：任意层级都能一步跳回根目录或设备状态页。
         findViewById<TextView>(R.id.filesPath).setOnClickListener { showLocationMenu() }
+        // 显式刷新入口：路径栏右侧按钮，避免只能靠点提示条重试。
+        findViewById<Button>(R.id.filesRefresh).setOnClickListener { load(path) }
         // 上传、新建文件/文件夹、退出都收进右下角浮空按钮，顶部只保留导航。
         findViewById<View>(R.id.filesFab).setOnClickListener { showActionMenu(it) }
         setUpFileList()
@@ -310,7 +329,13 @@ class FilesActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(file: DeviceFile) {
-        MaterialAlertDialogBuilder(this).setTitle("删除文件？").setMessage(file.path)
+        val title = if (file.directory) "删除目录？" else "删除文件？"
+        val message = if (file.directory) {
+            "${file.path}\n\n目录及其中全部内容都会被删除，且无法恢复。"
+        } else {
+            "${file.path}\n\n删除后无法恢复。"
+        }
+        MaterialAlertDialogBuilder(this).setTitle(title).setMessage(message)
             .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ ->
                 lifecycleScope.launch {
                     runCatching { repository().delete(file.path) }.onSuccess { load(path) }
@@ -319,9 +344,33 @@ class FilesActivity : AppCompatActivity() {
             }.show()
     }
 
+    /**
+     * 上传前先处理同名文件：同名目录直接拒绝；同名文件二次确认后才覆盖，
+     * 避免误把设备上的原文件替换掉。
+     */
     private fun upload(uri: Uri) {
         lifecycleScope.launch {
             val targetName = displayName(uri)
+            val existing = files.firstOrNull { it.name == targetName }
+            if (existing?.directory == true) {
+                toast("已存在同名目录，无法上传文件")
+                return@launch
+            }
+            if (existing != null) {
+                MaterialAlertDialogBuilder(this@FilesActivity)
+                    .setTitle("覆盖同名文件？")
+                    .setMessage("当前目录已存在 $targetName，继续上传会覆盖原文件。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("覆盖") { _, _ -> startUpload(uri, targetName) }
+                    .show()
+                return@launch
+            }
+            startUpload(uri, targetName)
+        }
+    }
+
+    private fun startUpload(uri: Uri, targetName: String) {
+        lifecycleScope.launch {
             val temp = File(cacheDir, "upload_${System.currentTimeMillis()}")
             try {
                 withContext(Dispatchers.IO) { contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use(input::copyTo) } }
@@ -370,6 +419,10 @@ class FilesActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 下载到手机缓存，再让用户选择「保存到…」或「分享」：
+     * 保存走 SAF，目标位置由用户决定；分享作为备选，仍走 FileProvider。
+     */
     private fun download(file: DeviceFile) {
         lifecycleScope.launch {
             val progress = showTransferProgress("下载 ${file.name}")
@@ -378,17 +431,45 @@ class FilesActivity : AppCompatActivity() {
                     path = file.path,
                     isCancelled = { progress.cancelled }
                 ) { done, total -> progress.update(done, total) }
-                val cache = File(cacheDir, file.name)
-                withContext(Dispatchers.IO) { cache.writeBytes(bytes) }
-                val intent = Intent(Intent.ACTION_SEND).setType("application/octet-stream")
-                    .putExtra(Intent.EXTRA_STREAM, androidx.core.content.FileProvider.getUriForFile(this@FilesActivity,
-                        "$packageName.fileprovider", cache)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                startActivity(Intent.createChooser(intent, "保存文件"))
+                progress.dismiss()
+                offerDownload(file, bytes)
             } catch (error: Exception) {
                 toast(error.message ?: "下载失败")
             } finally {
                 progress.dismiss()
             }
+        }
+    }
+
+    private fun offerDownload(file: DeviceFile, bytes: ByteArray) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(file.name)
+            .setMessage("已下载 ${formatByteSize(bytes.size.toLong())}，可保存到指定位置或分享给其他应用。")
+            .setNegativeButton("取消", null)
+            .setNeutralButton("分享") { _, _ -> shareFile(file, bytes) }
+            .setPositiveButton("保存到…") { _, _ ->
+                pendingSaveBytes = bytes
+                saveLauncher.launch(file.name)
+            }
+            .show()
+    }
+
+    private fun shareFile(file: DeviceFile, bytes: ByteArray) {
+        lifecycleScope.launch {
+            runCatching {
+                val cache = File(cacheDir, file.name)
+                withContext(Dispatchers.IO) { cache.writeBytes(bytes) }
+                val intent = Intent(Intent.ACTION_SEND).setType("application/octet-stream")
+                    .putExtra(
+                        Intent.EXTRA_STREAM,
+                        androidx.core.content.FileProvider.getUriForFile(
+                            this@FilesActivity,
+                            "$packageName.fileprovider",
+                            cache
+                        )
+                    ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                startActivity(Intent.createChooser(intent, "分享文件"))
+            }.onFailure { toast(it.message ?: "分享失败") }
         }
     }
 

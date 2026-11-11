@@ -102,10 +102,13 @@ internal object DeviceSessionHolder {
     /**
      * 授权/快捷操作重启设备后，按原地址轮询等待设备重新上线。
      * 期间不清空地址与凭证；成功后把新会话写回全局持有者，设备页恢复时可直接复用。
+     * [isCancelled] 为 true 时提前结束等待并返回 null（设备可能仍在重启），
+     * 由调用方决定如何提示，不视为设备故障。
      */
     suspend fun reconnectAfterReboot(
         timeoutMs: Long = 90_000,
-        previousBootId: String? = null
+        previousBootId: String? = null,
+        isCancelled: () -> Boolean = { false }
     ): TelnetClient.Session? {
         val target = host
         val targetPort = port
@@ -128,6 +131,11 @@ internal object DeviceSessionHolder {
         kotlinx.coroutines.delay(2_000)
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
+            if (isCancelled()) {
+                rebooting = false
+                Diagnostics.log("已取消等待设备重新上线")
+                return null
+            }
             val restored = runCatching {
                 TelnetClient().connect(target, targetPort, timeoutMs = 3_000, credentials = targetCredentials)
             }.onFailure {

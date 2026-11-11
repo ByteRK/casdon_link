@@ -50,19 +50,76 @@
                 android:layout_marginTop="@dimen/space_sm"
                 tools:text="机型 · Z200Muse\nPID · VTrRZRWy" />
 
+            <!-- 授权服务状态：进页面自动检测，按钮可手动重试；不再占用授权记录卡片。 -->
             <LinearLayout
                 style="@style/Widget.CasdonLink.Card"
                 android:layout_marginTop="@dimen/space_lg">
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        style="@style/Text.CasdonLink.Label"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="授权服务" />
+
+                    <Button
+                        android:id="@+id/licenseCheckService"
+                        style="@style/Widget.CasdonLink.Button.InlineSmall"
+                        android:text="重新检测" />
+                </LinearLayout>
+
                 <TextView
-                    style="@style/Text.CasdonLink.Label"
-                    android:text="当前授权" />
+                    android:id="@+id/licenseServiceStatus"
+                    style="@style/Text.CasdonLink.MultilineCaption"
+                    android:layout_marginTop="10dp"
+                    android:text="尚未检测" />
+            </LinearLayout>
+
+            <LinearLayout
+                style="@style/Widget.CasdonLink.Card"
+                android:layout_marginTop="@dimen/space_lg">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        style="@style/Text.CasdonLink.Label"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="当前授权" />
+
+                    <Button
+                        android:id="@+id/licenseReload"
+                        style="@style/Widget.CasdonLink.Button.InlineSmall"
+                        android:text="重新读取" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/licenseReadAt"
+                    style="@style/Text.CasdonLink.Caption"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:text="尚未读取" />
 
                 <TextView
                     android:id="@+id/licenseCurrent"
                     style="@style/Text.CasdonLink.MultilineBody"
                     android:layout_marginTop="10dp"
                     tools:text="未授权（设备上不存在授权文件）" />
+
+                <Button
+                    android:id="@+id/licenseReveal"
+                    style="@style/Widget.CasdonLink.Button.Small"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="显示完整授权码"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <LinearLayout
@@ -73,11 +130,55 @@
                     style="@style/Text.CasdonLink.Label"
                     android:text="操作" />
 
-                <TextView
-                    style="@style/Text.CasdonLink.MultilineCaption"
+                <!-- 步骤条：申请 → 写入 → 校验 → 同步 → 重启 → 上线 → 读取。 -->
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:visibility="gone"
-                    android:text="补发会向授权服务申请授权码、写入设备并重启。请核对机型、PID 和目标文件；已存在的授权会被覆盖。" />
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/licenseSteps"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/licenseStepApply"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="1 申请" />
+
+                        <TextView
+                            android:id="@+id/licenseStepWrite"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="2 写入" />
+
+                        <TextView
+                            android:id="@+id/licenseStepVerify"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="3 校验" />
+
+                        <TextView
+                            android:id="@+id/licenseStepSync"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="4 同步" />
+
+                        <TextView
+                            android:id="@+id/licenseStepReboot"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="5 重启" />
+
+                        <TextView
+                            android:id="@+id/licenseStepOnline"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="6 上线" />
+
+                        <TextView
+                            android:id="@+id/licenseStepRead"
+                            style="@style/Widget.CasdonLink.StepChip"
+                            android:text="7 读取" />
+                    </LinearLayout>
+                </HorizontalScrollView>
 
                 <CheckBox
                     android:id="@+id/licenseConfirm"
@@ -88,6 +189,11 @@
                     android:text="我已核对设备铭牌与 PID 一致"
                     android:textColor="@color/text_primary"
                     android:textSize="@dimen/text_body" />
+
+                <TextView
+                    style="@style/Text.CasdonLink.Caption"
+                    android:layout_marginTop="@dimen/space_xs"
+                    android:text="补发会覆盖设备现有授权并重启设备，请确认设备铭牌上的 PID 与本页一致。" />
 
                 <Button
                     android:id="@+id/licenseStart"
@@ -118,11 +224,42 @@
                     android:visibility="gone" />
 
                 <Button
+                    android:id="@+id/licenseCancelWait"
+                    style="@style/Widget.CasdonLink.Button.Secondary"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:text="取消等待"
+                    android:visibility="gone" />
+
+                <Button
                     android:id="@+id/licenseDone"
                     style="@style/Widget.CasdonLink.Button.Primary"
                     android:layout_marginTop="@dimen/space_md"
                     android:text="返回设备页"
                     android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/licenseSuccessActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <Button
+                        android:id="@+id/licenseAgain"
+                        style="@style/Widget.CasdonLink.Button.Secondary"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="再次补发" />
+
+                    <Button
+                        android:id="@+id/licenseRecords"
+                        style="@style/Widget.CasdonLink.Button.Secondary"
+                        android:layout_width="0dp"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:text="查看记录" />
+                </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
@@ -144,12 +281,6 @@
                     style="@style/Widget.CasdonLink.Button.Secondary"
                     android:layout_marginTop="@dimen/space_md"
                     android:text="导出授权记录" />
-
-                <Button
-                    android:id="@+id/licenseCheckService"
-                    style="@style/Widget.CasdonLink.Button.Small"
-                    android:layout_marginTop="@dimen/space_sm"
-                    android:text="检测授权服务" />
             </LinearLayout>
 
         </LinearLayout>

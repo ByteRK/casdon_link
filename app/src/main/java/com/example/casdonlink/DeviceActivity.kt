@@ -16,15 +16,20 @@ import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.Diagnostics
 import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.FeatureGate
+import com.example.casdonlink.device.DeviceInfo
 import com.example.casdonlink.device.DeviceRepository
 import com.example.casdonlink.profile.DeviceProfile
 import com.example.casdonlink.profile.FileCheck
+import com.example.casdonlink.profile.LicenseText
 import com.example.casdonlink.profile.ProfileMatcher
 import com.example.casdonlink.profile.ProfileProbe
 import com.example.casdonlink.profile.ProfileStore
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 连接成功后的设备工作页：所有设备操作都在这里及其子页面完成，
@@ -42,6 +47,12 @@ class DeviceActivity : AppCompatActivity() {
     /** 完整功能模式下人工选择的机型；重连后仍保留，重新进入设备页时自动识别。 */
     private var manualProfile: DeviceProfile? = null
     private var detecting = false
+    /** 连接丢失后停留在本页，等用户重试或返回，不再直接退回首页。 */
+    private var lost = false
+    /** 设备当前授权摘要（已授权 + 脱敏授权码 / 未授权 / 无法解析）。 */
+    private var licenseSummary: String? = null
+    /** 正在读取授权摘要的机型，避免重复读取。 */
+    private var licenseLoadingFor: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +92,9 @@ class DeviceActivity : AppCompatActivity() {
         findViewById<Button>(R.id.quickActionsButton).setOnClickListener { openQuickActions() }
         findViewById<TextView>(R.id.profileBadge).setOnClickListener { showProfileDetails() }
         findViewById<Button>(R.id.disconnectButton).setOnClickListener { disconnectAndReturn() }
+        // 断线卡片：重试只重建会话，不离开本页；返回首页才主动断开并清空目标。
+        findViewById<Button>(R.id.retryConnectionButton).setOnClickListener { retryAfterLost() }
+        findViewById<Button>(R.id.returnHomeButton).setOnClickListener { returnHome() }
 
         // 返回键等同于断开连接，确保回到首页时不会残留半开连接。
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -111,13 +125,15 @@ class DeviceActivity : AppCompatActivity() {
         val active = session ?: return
         val button = findViewById<Button>(R.id.refreshStatusButton)
         button.isEnabled = false
+        findViewById<TextView>(R.id.deviceUpdated).text = "正在刷新…"
         lifecycleScope.launch {
             try {
                 val info = DeviceRepository(active).readOverview()
-                findViewById<TextView>(R.id.deviceStatus).text =
-                    "${info.system}\n运行时间 · ${info.uptime}\n${info.memory}"
+                renderDeviceInfo(info)
+                findViewById<TextView>(R.id.deviceUpdated).text = "更新于 ${timeText()}"
             } catch (error: Exception) {
                 Diagnostics.log("状态刷新失败：${error.javaClass.simpleName}: ${error.message}")
+                findViewById<TextView>(R.id.deviceUpdated).text = "刷新失败 · ${timeText()}"
                 if (!active.isAlive()) {
                     recoverSession(showToast = false)
                     return@launch
@@ -129,7 +145,27 @@ class DeviceActivity : AppCompatActivity() {
         }
     }
 
-    /** 后台持续检测连接，设备断开时先尝试重连，失败才返回首页。 */
+    /** 状态卡按「系统 / 运行时间 / CPU / 内存 / 存储 / 网络」逐行展示，缺项自动省略。 */
+    private fun renderDeviceInfo(info: DeviceInfo) {
+        val text = buildList {
+            add(if (info.host.isBlank()) info.system else "${info.host} · ${info.system}")
+            add("运行时间 · ${info.uptime}")
+            if (info.cpu.isNotBlank() || info.load.isNotBlank()) {
+                add(buildString {
+                    append("CPU · ").append(info.cpu.ifBlank { "未知" })
+                    if (info.load.isNotBlank()) append(" · 负载 ").append(info.load)
+                })
+            }
+            add("内存 · ${info.memory}")
+            if (info.storage.isNotBlank()) add("存储 · ${info.storage}")
+            if (info.network.isNotBlank()) add("网络 · ${info.network}")
+        }
+        findViewById<TextView>(R.id.deviceStatus).text = text.joinToString("\n")
+    }
+
+    private fun timeText(): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+
+    /** 后台持续检测连接，设备断开时先尝试重连，失败则停留在本页展示断线卡片。 */
     private fun monitorConnection() {
         val active = session ?: return
         lifecycleScope.launch {
@@ -139,7 +175,7 @@ class DeviceActivity : AppCompatActivity() {
 
     /**
      * 恢复会话：ROM 可能在应用退到后台期间中止既有连接，这里按原地址静默重连，
-     * 成功后继续停留在设备页；只有重连失败才真正视为断开。
+     * 成功后继续停留在设备页；只有重连失败才进入「连接已断开」状态。
      */
     private fun recoverSession(showToast: Boolean) {
         if (closing || recovering) return
@@ -153,9 +189,12 @@ class DeviceActivity : AppCompatActivity() {
                     onDeviceLost()
                     return@launch
                 }
+                lost = false
                 session = restored
                 boundSession = restored
                 renderConnectionState("连接已恢复")
+                showLostState(false)
+                resetLicenseSummary()
                 if (showToast) toast("连接已自动恢复")
                 loadStatus(showToast = false)
                 monitorConnection()
@@ -166,14 +205,76 @@ class DeviceActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 设备断开：不直接退回首页，保留原地址与凭证，展示「连接已断开 + 重试/返回」卡片。
+     * 目标地址不清空，用户点重试时 [DeviceSessionHolder.ensure] 才能按原地址重连。
+     */
     private fun onDeviceLost() {
-        if (closing) return
-        closing = true
-        DeviceSessionHolder.release()
+        if (closing || lost) return
+        lost = true
+        session = null
+        boundSession = null
         runOnUiThread {
             findViewById<TextView>(R.id.deviceState).text = "连接已断开"
+            showLostState(true)
             toast("设备连接已断开")
-            finish()
+        }
+    }
+
+    /** 断线卡片的重试入口：直接复用原地址与凭证重建会话，不离开本页。 */
+    private fun retryAfterLost() {
+        if (recovering) return
+        recovering = true
+        val button = findViewById<Button>(R.id.retryConnectionButton)
+        button.isEnabled = false
+        button.text = "连接中…"
+        lifecycleScope.launch {
+            try {
+                val restored = DeviceSessionHolder.ensure()
+                if (restored == null) {
+                    toast("仍无法连接设备，请检查网络后重试或返回首页")
+                    return@launch
+                }
+                lost = false
+                session = restored
+                boundSession = restored
+                renderConnectionState("连接已恢复")
+                showLostState(false)
+                resetLicenseSummary()
+                loadStatus(showToast = false)
+                monitorConnection()
+                detectProfile()
+                toast("连接已恢复")
+            } finally {
+                recovering = false
+                button.isEnabled = true
+                button.text = "重试连接"
+            }
+        }
+    }
+
+    /** 返回首页：主动断开并清空目标，避免首页继续指向已失效的地址。 */
+    private fun returnHome() {
+        if (closing) return
+        closing = true
+        DeviceSessionHolder.disconnect()
+        finish()
+    }
+
+    /** 断线时隐藏全部设备操作，只保留重试/返回入口；恢复后按机型状态重新渲染。 */
+    private fun showLostState(show: Boolean) {
+        findViewById<View>(R.id.deviceLostCard).isVisible = show
+        findViewById<View>(R.id.statusCard).isVisible = !show
+        findViewById<View>(R.id.deviceActionsTitle).isVisible = !show
+        findViewById<Button>(R.id.importPackageButton).isVisible = !show
+        findViewById<Button>(R.id.disconnectButton).isVisible = !show
+        findViewById<View>(R.id.advancedActions).isVisible =
+            !show && FeatureGate.isFullModeEnabled(this)
+        if (show) {
+            findViewById<View>(R.id.profileActions).isVisible = false
+            findViewById<TextView>(R.id.deviceLicense).isVisible = false
+        } else {
+            renderProfileState()
         }
     }
 
@@ -190,10 +291,15 @@ class DeviceActivity : AppCompatActivity() {
         // 从系统文件选择器、授权页或快捷操作页返回时，后台期间的连接可能已被中止；
         // 如果操作页已经完成重启重连，这里直接接管新会话并重新识别。
         val current = DeviceSessionHolder.session()
-        if (current != null && current !== boundSession) {
+        // 只接管真正存活的新会话；会话已死时交给下面的 recoverSession 统一重连，
+        // 否则断线卡片会被一个「看似新、实际已关闭」的会话覆盖。
+        if (current != null && current.isAlive() && current !== boundSession) {
+            lost = false
             session = current
             boundSession = current
             renderConnectionState("连接已恢复")
+            showLostState(false)
+            resetLicenseSummary()
             loadStatus(showToast = false)
             monitorConnection()
             detectProfile()
@@ -208,6 +314,12 @@ class DeviceActivity : AppCompatActivity() {
      * 默认只开放「修复包」；交互终端、文件管理等高级操作需要先在首页用手势
      * 开启完整功能。受限控件统一放在 advancedActions 容器里，新增功能只需加入该容器。
      */
+    /** 会话重建后清空旧授权摘要，重新读取当前设备的授权。 */
+    private fun resetLicenseSummary() {
+        licenseSummary = null
+        licenseLoadingFor = null
+    }
+
     private fun applyFeatureGate() {
         findViewById<View>(R.id.advancedActions).isVisible = FeatureGate.isFullModeEnabled(this)
         renderProfileState()
@@ -228,6 +340,9 @@ class DeviceActivity : AppCompatActivity() {
         }
         val active = session ?: return
         if (detecting) return
+        // 重新识别时清空旧摘要，避免显示上一机型/上一次连接的授权状态。
+        licenseSummary = null
+        licenseLoadingFor = null
         if (profiles.isEmpty()) {
             profileState = ProfileState.Unknown
             renderProfileState()
@@ -279,24 +394,70 @@ class DeviceActivity : AppCompatActivity() {
         val profile = (state as? ProfileState.Matched)?.profile
         val badge = findViewById<TextView>(R.id.profileBadge)
         badge.isVisible = true
-        badge.text = when (state) {
+        val baseText = when (state) {
             ProfileState.Detecting -> "识别中…"
             is ProfileState.Matched -> if (state.manual) "手动 · ${state.profile.name}" else state.profile.name
             ProfileState.Unknown -> "未知机型"
             is ProfileState.Failed -> "识别失败"
         }
+        // 徽标只放机型与授权状态；完整脱敏授权码放在下方独立一行，避免徽标过长。
+        val licenseState = licenseSummary?.substringBefore(" ·")
+        badge.text = if (profile != null && licenseState != null) "$baseText · $licenseState" else baseText
         badge.setTextColor(ContextCompat.getColor(
             this,
             if (profile != null) R.color.secondary else R.color.text_secondary
         ))
 
+        val licenseLine = findViewById<TextView>(R.id.deviceLicense)
+        licenseLine.isVisible = profile != null && licenseSummary != null && !lost
+        licenseLine.text = licenseSummary?.let { "设备授权 · $it" }.orEmpty()
+
         val showLicense = profile?.license != null
         val showQuick = profile != null &&
             profile.hasQuickActions &&
             FeatureGate.isFullModeEnabled(this)
-        findViewById<View>(R.id.profileActions).isVisible = profile != null && (showLicense || showQuick)
+        findViewById<View>(R.id.profileActions).isVisible =
+            !lost && profile != null && (showLicense || showQuick)
         findViewById<Button>(R.id.licenseButton).isVisible = showLicense
         findViewById<Button>(R.id.quickActionsButton).isVisible = showQuick
+
+        // 命中机型且配置了授权文件时，只读一次文件生成授权摘要。
+        if (!lost && profile?.license != null && licenseSummary == null && licenseLoadingFor == null) {
+            loadLicenseSummary(profile)
+        }
+    }
+
+    /**
+     * 读取设备授权摘要：只读一次授权文件，解析出 PID/DID/授权码后只展示脱敏摘要，
+     * 文件内容不写日志（secret = true）。读取失败不让设备页整体失败。
+     */
+    private fun loadLicenseSummary(profile: DeviceProfile) {
+        val config = profile.license ?: return
+        val active = session ?: return
+        if (licenseLoadingFor != null) return
+        licenseLoadingFor = profile.id
+        lifecycleScope.launch {
+            try {
+                val raw = active.execute(
+                    "cat ${ProfileProbe.shellQuote(config.targetPath)} 2>/dev/null || true",
+                    timeoutMs = 8_000,
+                    secret = true
+                )
+                val parsed = LicenseText.parse(raw, config.read)
+                licenseSummary = when {
+                    parsed == null && raw.isBlank() -> "未授权"
+                    parsed == null -> "授权文件无法解析"
+                    parsed.license.isEmpty() -> "已授权 · 无授权码字段"
+                    else -> "已授权 · ${LicenseText.mask(parsed.license)}"
+                }
+            } catch (error: Exception) {
+                Diagnostics.log("读取设备授权摘要失败：${error.javaClass.simpleName}: ${error.message}")
+                licenseSummary = "授权状态未知"
+            } finally {
+                licenseLoadingFor = null
+                renderProfileState()
+            }
+        }
     }
 
     /** 徽标点击：已识别看规则详情，未知/失败看原因与重试入口。 */
@@ -318,6 +479,7 @@ class DeviceActivity : AppCompatActivity() {
                     } else {
                         append("\n授权配置：未配置")
                     }
+                    licenseSummary?.let { append("\n当前授权：").append(it) }
                     append("\n匹配条件：")
                     profile.match.all.forEach { append("\n· ").append(checkText(it)) }
                     profile.match.none.forEach { append("\n· 不存在 ").append(it.path) }
@@ -331,7 +493,8 @@ class DeviceActivity : AppCompatActivity() {
             }
             ProfileState.Unknown -> showProfileDialog(
                 "未知机型",
-                "未匹配到内置机型规则。\n\n可点击「重新识别」重试；完整功能模式下可手动选择机型。"
+                "未匹配到内置机型规则。\n\n可点击「重新识别」重试，或点击「手动选择」指定机型；" +
+                    "手动指定后仍可正常补发授权码。"
             )
             is ProfileState.Failed -> showProfileDialog(
                 "识别失败",
@@ -356,9 +519,13 @@ class DeviceActivity : AppCompatActivity() {
             .setNegativeButton("关闭", null)
             .setPositiveButton("重新识别") { _, _ ->
                 manualProfile = null
+                licenseSummary = null
+                licenseLoadingFor = null
                 detectProfile()
             }
-        if (FeatureGate.isFullModeEnabled(this) && profiles.isNotEmpty()) {
+        // 手动选择机型不依赖完整功能：补发授权码本身不需要完整功能，
+        // 未知机型时也应允许人工指定，否则现场无法继续操作。
+        if (profiles.isNotEmpty()) {
             builder.setNeutralButton("手动选择") { _, _ -> showProfilePicker() }
         }
         builder.show()
@@ -377,6 +544,8 @@ class DeviceActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("选择机型")
             .setItems(names.toTypedArray()) { _, which ->
+                licenseSummary = null
+                licenseLoadingFor = null
                 if (which == 0) {
                     manualProfile = null
                     detectProfile()

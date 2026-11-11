@@ -1,5 +1,8 @@
 package com.example.casdonlink
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -13,6 +16,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.casdonlink.connection.TelnetClient
+import com.example.casdonlink.data.TerminalHistoryStore
 import com.example.casdonlink.ui.applyDarkSystemBars
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -32,6 +36,7 @@ class TerminalActivity : AppCompatActivity() {
     private val history = ArrayDeque<String>()
     /** 历史游标，等于 history.size 表示停在最新（空）行。 */
     private var historyIndex = 0
+    private lateinit var historyStore: TerminalHistoryStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +45,16 @@ class TerminalActivity : AppCompatActivity() {
         applyKeyboardInsets()
         output = findViewById(R.id.terminalOutput)
         input = findViewById(R.id.commandInput)
+        // 命令历史持久化在 SharedPreferences，重启 App 后仍可继续回放。
+        historyStore = TerminalHistoryStore(this)
+        history.addAll(historyStore.load().takeLast(MAX_HISTORY))
+        historyIndex = history.size
+        // 旋转/重建时恢复输出与未发送的输入；输出最多保存 MAX_OUTPUT_CHARS 字符。
+        savedInstanceState?.getString(KEY_OUTPUT)?.let { output.text = it }
+        savedInstanceState?.getString(KEY_INPUT)?.let {
+            input.setText(it)
+            input.setSelection(it.length)
+        }
         findViewById<TextView>(R.id.terminalTitle).text = intent.getStringExtra(EXTRA_HOST) ?: "终端"
         // 主机名/标题过长时用 marquee 横向滚动，短标题不会滚动。
         findViewById<TextView>(R.id.terminalTitle).isSelected = true
@@ -80,6 +95,8 @@ class TerminalActivity : AppCompatActivity() {
         bindInsertKey(R.id.keyTilde, "~")
         findViewById<Button>(R.id.keyHistoryPrev).setOnClickListener { recallHistory(-1) }
         findViewById<Button>(R.id.keyHistoryNext).setOnClickListener { recallHistory(+1) }
+        findViewById<Button>(R.id.keyClear).setOnClickListener { clearOutput() }
+        findViewById<Button>(R.id.keyCopyAll).setOnClickListener { copyAllOutput() }
     }
 
     /** 直接向设备发送控制字符（中断、补全、清屏等），不改动输入框内容。 */
@@ -228,13 +245,33 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** 记录已发送的命令供 ↑/↓ 回放；重复的相邻命令不重复记录。 */
+    /** 记录已发送的命令供 ↑/↓ 回放；重复的相邻命令不重复记录，并同步持久化。 */
     private fun rememberCommand(command: String) {
         if (history.lastOrNull() != command) {
             history.addLast(command)
             while (history.size > MAX_HISTORY) history.removeFirst()
+            historyStore.save(history)
         }
         historyIndex = history.size
+    }
+
+    /** 清屏只清手机侧缓冲，不向设备发送 Ctrl+L，避免影响设备当前命令行状态。 */
+    private fun clearOutput() {
+        output.text = ""
+        ansiCarry = ""
+        toast("已清屏（仅本地缓冲）")
+    }
+
+    /** 复制当前全部终端输出到剪贴板。 */
+    private fun copyAllOutput() {
+        val text = output.text.toString()
+        if (text.isBlank()) {
+            toast("终端暂无输出")
+            return
+        }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink 终端输出", text))
+        toast("已复制全部输出（${text.length} 字符）")
     }
 
     /**
@@ -312,6 +349,17 @@ class TerminalActivity : AppCompatActivity() {
         return builder.toString().replace("\r", "")
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 只保存本地输出与未发送输入；会话对象由 DeviceSessionHolder 管理，不放进 Bundle。
+        if (::output.isInitialized) {
+            outState.putString(KEY_OUTPUT, output.text.toString().takeLast(MAX_OUTPUT_CHARS))
+        }
+        if (::input.isInitialized) {
+            outState.putString(KEY_INPUT, input.text.toString())
+        }
+    }
+
     override fun onPause() {
         stopReader()
         monitorJob?.cancel()
@@ -332,6 +380,11 @@ class TerminalActivity : AppCompatActivity() {
         const val MAX_OUTPUT_CHARS = 100_000
         /** 本地命令历史最多保留的条数。 */
         const val MAX_HISTORY = 50
+        /** 旋转重建时保存输出/输入的 Bundle key。 */
+        private const val KEY_OUTPUT = "terminal_output"
+        private const val KEY_INPUT = "terminal_input"
         private const val ESC = '\u001B'
     }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }

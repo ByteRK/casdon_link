@@ -41,7 +41,45 @@
             android:layout_marginTop="6dp"
             android:text="连接正常" />
 
+        <!-- 授权摘要：命中机型且能读取授权文件时显示，例如「设备授权 · 已授权 · b893…44d1」。 -->
+        <TextView
+            android:id="@+id/deviceLicense"
+            style="@style/Text.CasdonLink.Caption"
+            android:layout_marginTop="@dimen/space_xs"
+            android:visibility="gone"
+            tools:text="设备授权 · 已授权 · b893…44d1" />
+
+        <!-- 断线卡片：连接丢失后停留本页，允许重试或返回；不直接退回首页。 -->
         <LinearLayout
+            android:id="@+id/deviceLostCard"
+            style="@style/Widget.CasdonLink.Card"
+            android:layout_marginTop="@dimen/space_xl"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/Text.CasdonLink.SectionTitle"
+                android:text="连接已断开" />
+
+            <TextView
+                style="@style/Text.CasdonLink.MultilineCaption"
+                android:layout_marginTop="@dimen/space_sm"
+                android:text="设备可能已重启、更换 IP 或网络中断。可重试当前地址；若设备已换 IP，请返回首页重新连接。" />
+
+            <Button
+                android:id="@+id/retryConnectionButton"
+                style="@style/Widget.CasdonLink.Button.Primary"
+                android:layout_marginTop="@dimen/space_md"
+                android:text="重试连接" />
+
+            <Button
+                android:id="@+id/returnHomeButton"
+                style="@style/Widget.CasdonLink.Button.Secondary"
+                android:layout_marginTop="@dimen/space_sm"
+                android:text="返回首页" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusCard"
             style="@style/Widget.CasdonLink.Card"
             android:layout_marginTop="@dimen/space_xl">
 
@@ -53,13 +91,19 @@
                 android:id="@+id/deviceStatus"
                 style="@style/Text.CasdonLink.MultilineBody"
                 android:layout_marginTop="10dp"
-                tools:text="Linux 6.1.118 armv7l\n运行时间 · 2 天 4 小时\n总内存 128 MB · 可用内存 42 MB" />
+                tools:text="rk3506-buildroot · Linux 6.1.118 armv7l\n运行时间 · 2 天 4 小时\nCPU · ARMv7 Processor rev 1 · 负载 0.42 0.38 0.31\n内存 · 总内存 94 MB · 可用内存 54 MB\n存储 · / 94 MB 已用 42%\n网络 · 10.0.0.93/24 · 14:0A:02:2C:18:BC" />
 
             <Button
                 android:id="@+id/refreshStatusButton"
                 style="@style/Widget.CasdonLink.Button.Small"
                 android:layout_marginTop="14dp"
                 android:text="刷新状态" />
+
+            <TextView
+                android:id="@+id/deviceUpdated"
+                style="@style/Text.CasdonLink.Caption"
+                android:layout_marginTop="@dimen/space_sm"
+                android:text="尚未刷新" />
         </LinearLayout>
 
         <!-- 机型操作：只在该设备命中规则时出现；补发授权码不受完整功能开关限制。 -->
@@ -90,6 +134,7 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/deviceActionsTitle"
             style="@style/Text.CasdonLink.SectionTitle"
             android:layout_marginTop="@dimen/space_2xl"
             android:text="设备操作" />

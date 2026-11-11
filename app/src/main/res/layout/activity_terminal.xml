@@ -113,6 +113,19 @@
                 android:id="@+id/keyTilde"
                 style="@style/Widget.CasdonLink.Button.Key"
                 android:text="~" />
+
+            <!-- 本地缓冲操作：清屏只清手机侧显示，复制全部导出当前终端输出。 -->
+            <Button
+                android:id="@+id/keyClear"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:contentDescription="清空本地终端显示"
+                android:text="清屏" />
+
+            <Button
+                android:id="@+id/keyCopyAll"
+                style="@style/Widget.CasdonLink.Button.Key"
+                android:contentDescription="复制全部终端输出"
+                android:text="复制全部" />
         </LinearLayout>
     </HorizontalScrollView>
 

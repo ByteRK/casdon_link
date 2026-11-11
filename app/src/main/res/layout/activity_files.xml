@@ -30,6 +30,12 @@
                 android:paddingBottom="6dp"
                 android:singleLine="true"
                 android:text="/" />
+
+            <Button
+                android:id="@+id/filesRefresh"
+                style="@style/Widget.CasdonLink.Button.Icon"
+                android:contentDescription="刷新当前目录"
+                android:text="↻" />
         </LinearLayout>
 
         <TextView

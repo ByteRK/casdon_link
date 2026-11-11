@@ -348,6 +348,24 @@
         <item name="android:textSize">@dimen/text_body</item>
     </style>
 
+    <!-- 授权步骤条的小标签：横向排列，颜色由代码按「待执行/当前/完成/失败」切换。 -->
+    <style name="Widget.CasdonLink.StepChip" parent="Widget.CasdonLink.Badge">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">@dimen/badge_height</item>
+        <item name="android:layout_marginEnd">@dimen/space_xs</item>
+        <item name="android:maxWidth">100dp</item>
+        <item name="android:paddingStart">@dimen/space_sm</item>
+        <item name="android:paddingEnd">@dimen/space_sm</item>
+    </style>
+
+    <!-- 行内小按钮：在标签旁放「重新读取 / 重新检测」这类次要操作。 -->
+    <style name="Widget.CasdonLink.Button.InlineSmall" parent="Widget.CasdonLink.Button.Small">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_marginStart">@dimen/space_sm</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
+    </style>
+
 
     <!-- ==================== 按钮样式 ==================== -->
 

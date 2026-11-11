@@ -3,6 +3,7 @@ package com.example.casdonlink
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -40,6 +41,26 @@ class QuickActionsActivity : AppCompatActivity() {
     private lateinit var adapter: ActionAdapter
     private var running = false
     private var cancelled = false
+    /** 重启前 boot_id，用于「重试连接」时确认设备确实完成了重启。 */
+    private var rebootBaselineId: String? = null
+    /** 等待 SAF 保存的结果文本。 */
+    private var pendingSaveText: String? = null
+    private val saveLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val text = pendingSaveText
+        pendingSaveText = null
+        if (uri == null || text == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                        ?: error("无法写入所选文件")
+                }
+            }.onSuccess { toast("结果已保存") }
+                .onFailure { toast("保存失败：${it.message ?: "未知错误"}") }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -148,6 +169,7 @@ class QuickActionsActivity : AppCompatActivity() {
             val output = StringBuilder()
             var failure: String? = null
             var rebooted = false
+            var rebootTimedOut = false
             try {
                 val session = DeviceSessionHolder.ensure() ?: error("设备连接已断开")
                 for ((index, command) in action.commands.withIndex()) {
@@ -170,12 +192,14 @@ class QuickActionsActivity : AppCompatActivity() {
                     val previousBootId = runCatching {
                         session.execute("cat /proc/sys/kernel/random/boot_id", timeoutMs = 3_000).trim()
                     }.getOrNull()
+                    rebootBaselineId = previousBootId
                     DeviceSessionHolder.beginReboot()
                     session.reboot()
                     setStatus("等待设备重新上线…")
                     val restored = DeviceSessionHolder.reconnectAfterReboot(90_000, previousBootId)
                     if (restored == null) {
                         failure = "设备未在 90 秒内重新上线，可能已更换 IP"
+                        rebootTimedOut = true
                     } else {
                         rebooted = true
                         toast("设备已重新上线")
@@ -190,8 +214,14 @@ class QuickActionsActivity : AppCompatActivity() {
                 val stopped = cancelled
                 when {
                     reason != null -> {
-                        setStatus("执行失败")
-                        showResult("执行失败", output.toString().ifBlank { reason } + "\n\n$reason")
+                        setStatus(if (rebootTimedOut) "设备未重新上线" else "执行失败")
+                        val title = if (rebootTimedOut) "设备未重新上线" else "执行失败"
+                        val hint = if (rebootTimedOut) "\n\n可点击下方「重试连接」继续等待设备上线。" else ""
+                        showResult(
+                            title,
+                            output.toString().ifBlank { reason } + "\n\n$reason$hint",
+                            onRetry = if (rebootTimedOut) ({ retryReconnectAfterReboot() }) else null
+                        )
                     }
                     stopped -> {
                         setStatus("已停止")
@@ -215,6 +245,36 @@ class QuickActionsActivity : AppCompatActivity() {
         }
     }
 
+    /** 重启等待超时后的重试入口：按原地址再等 60 秒，成功直接回到设备页。 */
+    private fun retryReconnectAfterReboot() {
+        if (running) return
+        running = true
+        // 重试等待期间不显示「停止」：这里没有可中断的设备命令，停止按钮会误导。
+        setRunning(false)
+        findViewById<TextView>(R.id.quickToolbarStatus).text = "等待上线…"
+        setStatus("等待设备重新上线…")
+        lifecycleScope.launch {
+            try {
+                val restored = DeviceSessionHolder.reconnectAfterReboot(60_000, rebootBaselineId)
+                if (restored == null) {
+                    setStatus("设备仍未上线")
+                    showResult(
+                        "设备仍未上线",
+                        "设备在 60 秒内仍未重新上线。\n请返回首页检查设备网络后再连接。",
+                        onRetry = { retryReconnectAfterReboot() }
+                    )
+                } else {
+                    setStatus("设备已重新上线")
+                    toast("设备已重新上线")
+                    finish()
+                }
+            } finally {
+                running = false
+                setRunning(false)
+            }
+        }
+    }
+
     private fun requestStop() {
         if (!running || cancelled) return
         cancelled = true
@@ -232,21 +292,53 @@ class QuickActionsActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.quickStatus).text = text
     }
 
-    private fun showResult(title: String, content: String) {
-        val view = layoutInflater.inflate(R.layout.dialog_text, null)
-        // 设备端 ls/echo 可能带颜色控制序列（如 ESC[0;0m），直接显示会变成乱码。
+    /**
+     * 结果弹窗：输出可滚动/可选中，提供复制、分享、保存；重启超时时额外显示「重试连接」。
+     * 设备端 ls/echo 可能带颜色控制序列（如 ESC[0;0m），展示与导出前统一去掉。
+     */
+    private fun showResult(title: String, content: String, onRetry: (() -> Unit)? = null) {
         val clean = content.replace(ANSI_ESCAPE, "").take(20_000)
-        view.findViewById<TextView>(R.id.dialogText).text = clean
-        MaterialAlertDialogBuilder(this)
+        val view = layoutInflater.inflate(R.layout.dialog_result, null)
+        view.findViewById<TextView>(R.id.dialogResultText).text = clean
+        val retryButton = view.findViewById<Button>(R.id.dialogResultRetry)
+        retryButton.isVisible = onRetry != null
+
+        val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(view)
             .setNegativeButton("关闭", null)
-            .setPositiveButton("复制") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink $title", clean))
-                toast("已复制到剪贴板")
-            }
-            .show()
+            .create()
+        dialog.show()
+
+        view.findViewById<Button>(R.id.dialogResultCopy).setOnClickListener {
+            copyToClipboard("CasdonLink $title", clean)
+            toast("已复制到剪贴板")
+        }
+        view.findViewById<Button>(R.id.dialogResultShare).setOnClickListener {
+            shareText(title, clean)
+        }
+        view.findViewById<Button>(R.id.dialogResultSave).setOnClickListener {
+            pendingSaveText = clean
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                .format(java.util.Date())
+            saveLauncher.launch("CasdonLink_result_$stamp.txt")
+        }
+        retryButton.setOnClickListener {
+            dialog.dismiss()
+            onRetry?.invoke()
+        }
+    }
+
+    private fun copyToClipboard(label: String, text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    }
+
+    private fun shareText(title: String, text: String) {
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, title)
+            .putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(intent, "分享结果"))
     }
 
     private fun handleBack() {
