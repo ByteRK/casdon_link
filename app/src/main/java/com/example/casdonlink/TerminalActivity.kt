@@ -71,7 +71,7 @@ class TerminalActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.connectionState).text = "已连接 · ${timeText()}"
         findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
         if (!DeviceSessionHolder.hasTarget()) {
-            Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "连接已断开", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -212,7 +212,7 @@ class TerminalActivity : AppCompatActivity() {
                 val restored = DeviceSessionHolder.ensure()
                 if (restored == null) {
                     if (!isFinishing && !isDestroyed) {
-                        Toast.makeText(this@TerminalActivity, "设备连接已断开", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@TerminalActivity, "连接已断开", Toast.LENGTH_SHORT).show()
                         finish()
                     }
                     return@launch
@@ -220,7 +220,7 @@ class TerminalActivity : AppCompatActivity() {
                 stopReader()
                 monitorJob?.cancel()
                 session = restored
-                findViewById<TextView>(R.id.connectionState).text = "连接已恢复 · ${timeText()}"
+                findViewById<TextView>(R.id.connectionState).text = "已重连 · ${timeText()}"
                 startReader()
                 startMonitor()
             } finally {
@@ -272,26 +272,26 @@ class TerminalActivity : AppCompatActivity() {
     private fun clearOutput() {
         output.text = ""
         ansiCarry = ""
-        toast("已清屏（仅本地缓冲）")
+        toast("已清屏")
     }
 
     /** 复制当前全部终端输出到剪贴板。 */
     private fun copyAllOutput() {
         val text = output.text.toString()
         if (text.isBlank()) {
-            toast("终端暂无输出")
+            toast("暂无输出")
             return
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink 终端输出", text))
-        toast("已复制全部输出（${text.length} 字符）")
+        toast("已复制（${text.length} 字符）")
     }
 
     /** 把当前终端输出交给系统分享面板。 */
     private fun shareOutput() {
         val text = output.text.toString()
         if (text.isBlank()) {
-            toast("终端暂无输出")
+            toast("暂无输出")
             return
         }
         val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
@@ -316,7 +316,12 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private fun applyFontSize(size: TerminalSettingsStore.FontSize) {
-        findViewById<Button>(R.id.terminalFont).text = "字号 · ${size.label}"
+        // 按钮文字保持固定，避免「字号 · 跟随系统」在四等分按钮里换行导致视觉错位；
+        // 当前档位由弹窗的单选项和 contentDescription 表达。
+        findViewById<Button>(R.id.terminalFont).apply {
+            text = "字号"
+            contentDescription = "字号，当前${size.label}"
+        }
         if (size.sp != null) {
             output.setTextSize(TypedValue.COMPLEX_UNIT_SP, size.sp)
         } else {

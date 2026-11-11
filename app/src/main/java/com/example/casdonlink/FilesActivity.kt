@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -74,7 +75,7 @@ class FilesActivity : AppCompatActivity() {
         setContentView(R.layout.activity_files)
         applySystemBarInsets()
         if (!DeviceSessionHolder.hasTarget()) {
-            Toast.makeText(this, "设备连接已断开", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "连接已断开", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -146,9 +147,9 @@ class FilesActivity : AppCompatActivity() {
                 // 空目录和「命令没有输出」在界面上要能区分，否则只能看到一片空白。
                 setHint(
                     when {
-                        result.isNotEmpty() -> "${result.size} 项 · 长按可操作 · 点路径可跳转"
-                        hasParent -> "目录为空 · 点「..」可返回上一层"
-                        else -> "目录为空 · 点击重试"
+                        result.isNotEmpty() -> "${result.size} 项 · 长按操作"
+                        hasParent -> "目录为空"
+                        else -> "目录为空，点击重试"
                     }
                 )
             } catch (error: Exception) {
@@ -167,7 +168,7 @@ class FilesActivity : AppCompatActivity() {
      * 失效时由 [DeviceSessionHolder.ensure] 自动重连。
      */
     private suspend fun repository(): FileRepository = FileRepository(
-        DeviceSessionHolder.ensure() ?: error("设备连接已断开")
+        DeviceSessionHolder.ensure() ?: error("连接已断开")
     )
 
     /** 顶部提示条同时充当状态与重试入口。 */
@@ -280,7 +281,7 @@ class FilesActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val active = runCatching { repository() }.getOrNull()
             if (active == null) {
-                toast("设备连接已断开")
+                toast("连接已断开")
                 return@launch
             }
             val text = runCatching { active.readText(file.path) }.getOrNull()
@@ -288,7 +289,7 @@ class FilesActivity : AppCompatActivity() {
                 // 二进制文件无法按文本解析：至少让「下载」真的能把文件取回本机。
                 MaterialAlertDialogBuilder(this@FilesActivity)
                     .setTitle(file.name)
-                    .setMessage("无法作为文本打开，可下载到本机后用其他应用查看。")
+                    .setMessage("无法按文本打开，可下载查看。")
                     .setNegativeButton("关闭", null)
                     .setPositiveButton("下载") { _, _ -> download(file) }
                     .show()
@@ -298,7 +299,7 @@ class FilesActivity : AppCompatActivity() {
             view.findViewById<TextView>(R.id.dialogText).text = buildString {
                 append(text.take(PREVIEW_CHARS))
                 if (text.length > PREVIEW_CHARS) {
-                    append("\n\n…（仅显示前 ").append(PREVIEW_CHARS).append(" 个字符，完整内容请下载）")
+                    append("\n\n…仅显示前 ").append(PREVIEW_CHARS).append(" 字符")
                 }
             }
             MaterialAlertDialogBuilder(this@FilesActivity)
@@ -344,7 +345,7 @@ class FilesActivity : AppCompatActivity() {
     private fun confirmDelete(file: DeviceFile) {
         val title = if (file.directory) "删除目录？" else "删除文件？"
         val message = if (file.directory) {
-            "${file.path}\n\n目录及其中全部内容都会被删除，且无法恢复。"
+            "${file.path}\n\n目录及全部内容将被删除，无法恢复。"
         } else {
             "${file.path}\n\n删除后无法恢复。"
         }
@@ -388,14 +389,14 @@ class FilesActivity : AppCompatActivity() {
                 }
                 val existing = files.firstOrNull { it.name == targetName }
                 if (existing?.directory == true) {
-                    field.error = "已存在同名目录，无法上传文件"
+                    field.error = "已存在同名目录"
                     return@setOnClickListener
                 }
                 dialog.dismiss()
                 if (existing != null) {
                     MaterialAlertDialogBuilder(this)
                         .setTitle("覆盖同名文件？")
-                        .setMessage("当前目录已存在 $targetName，继续上传会覆盖原文件。")
+                        .setMessage("已存在 $targetName，继续将覆盖原文件。")
                         .setNegativeButton("取消", null)
                         .setPositiveButton("覆盖") { _, _ -> startUpload(uri, targetName) }
                         .show()
@@ -482,7 +483,7 @@ class FilesActivity : AppCompatActivity() {
     private fun offerDownload(file: DeviceFile, bytes: ByteArray) {
         MaterialAlertDialogBuilder(this)
             .setTitle(file.name)
-            .setMessage("已下载 ${formatByteSize(bytes.size.toLong())}，可保存到指定位置或分享给其他应用。")
+            .setMessage("已下载 ${formatByteSize(bytes.size.toLong())}，可保存或分享。")
             .setNegativeButton("取消", null)
             .setNeutralButton("分享") { _, _ -> shareFile(file, bytes) }
             .setPositiveButton("保存到…") { _, _ ->
@@ -583,20 +584,20 @@ class FilesActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: Holder, position: Int) = holder.bind(getItem(position))
 
         inner class Holder(view: View) : RecyclerView.ViewHolder(view) {
-            private val icon = view.findViewById<TextView>(R.id.fileIcon)
+            private val icon = view.findViewById<ImageView>(R.id.fileIcon)
             private val name = view.findViewById<TextView>(R.id.fileName)
             private val meta = view.findViewById<TextView>(R.id.fileMeta)
 
             fun bind(row: FileRow) {
                 when (row) {
                     FileRow.Parent -> {
-                        icon.text = "↰"
+                        icon.setImageResource(R.drawable.ic_folder_up)
                         name.text = ".."
                         meta.text = "返回上一层"
                     }
                     is FileRow.Entry -> {
                         val file = row.file
-                        icon.text = if (file.directory) "⌂" else "·"
+                        icon.setImageResource(if (file.directory) R.drawable.ic_folder else R.drawable.ic_file)
                         name.text = file.name
                         meta.text = if (file.directory) "文件夹" else formatByteSize(file.size)
                     }

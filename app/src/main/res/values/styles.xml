@@ -177,14 +177,6 @@
     </style>
 
     <!-- 列表行前导符号（文件/目录图标位） -->
-    <style name="Text.CasdonLink.IconGlyph" parent="Text.CasdonLink">
-        <item name="android:layout_width">34dp</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:gravity">center</item>
-        <item name="android:textColor">@color/secondary</item>
-        <item name="android:textSize">@dimen/text_glyph</item>
-    </style>
-
     <!-- 对话框标题 -->
     <style name="Text.CasdonLink.DialogTitle" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:layout_width">match_parent</item>
@@ -193,6 +185,25 @@
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_toolbar_title</item>
+    </style>
+
+    <!-- 设备状态环形指标中的百分比 -->
+    <style name="Text.CasdonLink.GaugeValue" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/on_surface</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <!-- 授权阶段进度文字：两字注释，颜色由代码按状态切换。 -->
+    <style name="Text.CasdonLink.StepLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:gravity">center</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/text_hint</item>
+        <item name="android:textSize">11sp</item>
     </style>
 
     <!-- 页面底部声明（版本/编译时间/版权），居中弱化显示；视觉权重与参考项目设置页页脚一致。 -->
@@ -258,6 +269,22 @@
         <item name="android:padding">@dimen/card_padding</item>
     </style>
 
+    <!-- 设备状态信息块：在卡片内再抬一层 surfaceContainer，12dp 圆角。 -->
+    <style name="Widget.CasdonLink.StatusFact" parent="Widget.CasdonLink">
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:background">@drawable/bg_stat_tile</item>
+        <item name="android:padding">@dimen/space_md</item>
+    </style>
+
+    <!-- 状态信息块左侧图标：20dp，纯装饰，不参与无障碍焦点。 -->
+    <style name="Widget.CasdonLink.StatusFactIcon" parent="Widget.CasdonLink">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:importantForAccessibility">no</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
     <!-- 二级页标题栏：返回按钮 + 标题 + 状态 -->
     <style name="Widget.CasdonLink.Toolbar" parent="Widget.CasdonLink">
         <item name="android:layout_width">match_parent</item>
@@ -286,6 +313,15 @@
         <item name="android:paddingEnd">@dimen/space_lg</item>
     </style>
 
+    <!-- 文件/目录前导图标：34dp 槽位内居中 24dp 矢量图标。 -->
+    <style name="Widget.CasdonLink.FileIcon" parent="Widget.CasdonLink">
+        <item name="android:layout_width">34dp</item>
+        <item name="android:layout_height">34dp</item>
+        <item name="android:importantForAccessibility">no</item>
+        <item name="android:padding">5dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
     <!-- 多行列表项（修复步骤行） -->
     <style name="Widget.CasdonLink.ListRowBlock" parent="Widget.CasdonLink">
         <item name="android:layout_width">match_parent</item>
@@ -299,6 +335,17 @@
         <item name="android:layout_width">@dimen/step_dot_size</item>
         <item name="android:layout_height">@dimen/step_dot_size</item>
         <item name="android:layout_marginEnd">@dimen/space_md</item>
+    </style>
+
+    <!-- 授权阶段进度：每个阶段一列，圆点在上、文字在下。 -->
+    <style name="Widget.CasdonLink.StepItem" parent="Widget.CasdonLink">
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center_horizontal</item>
+    </style>
+
+    <style name="Widget.CasdonLink.StepDot.Progress" parent="Widget.CasdonLink">
+        <item name="android:layout_width">12dp</item>
+        <item name="android:layout_height">12dp</item>
     </style>
 
     <!-- 修复步骤行右侧内容列（标题 + 仅在失败时出现的错误说明） -->
@@ -336,16 +383,6 @@
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/on_surface</item>
         <item name="android:textSize">@dimen/text_body</item>
-    </style>
-
-    <!-- 授权步骤条的小标签：横向排列，颜色由代码按「待执行/当前/完成/失败」切换。 -->
-    <style name="Widget.CasdonLink.StepChip" parent="Widget.CasdonLink.Badge">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">@dimen/badge_height</item>
-        <item name="android:layout_marginEnd">@dimen/space_xs</item>
-        <item name="android:maxWidth">100dp</item>
-        <item name="android:paddingStart">@dimen/space_sm</item>
-        <item name="android:paddingEnd">@dimen/space_sm</item>
     </style>
 
     <!-- 行内小按钮：在标签旁放「重新读取 / 重新检测」这类次要操作。 -->
@@ -399,6 +436,13 @@
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
+    <!-- 小号危险按钮（清除授权码等） -->
+    <style name="Widget.CasdonLink.Button.Small.Danger" parent="Widget.CasdonLink.Button.Small">
+        <item name="android:textColor">@color/button_danger_text</item>
+        <item name="rippleColor">@color/ripple_error</item>
+        <item name="strokeColor">@color/button_danger_stroke</item>
+    </style>
+
     <!-- 危险操作按钮（断开连接、删除） -->
     <style name="Widget.CasdonLink.Button.Danger" parent="Widget.CasdonLink.Button.Secondary">
         <item name="android:textColor">@color/button_danger_text</item>
@@ -432,6 +476,35 @@
         <item name="android:scaleType">centerInside</item>
     </style>
 
+    <!-- 紧凑图标按钮（设备状态卡右上角刷新）：40dp，图标 24dp，保持 12dp 圆角。 -->
+    <style name="Widget.CasdonLink.Button.Icon.Small" parent="Widget.CasdonLink.Button.Icon">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:padding">@dimen/space_sm</item>
+        <item name="android:paddingStart">@dimen/space_sm</item>
+        <item name="android:paddingEnd">@dimen/space_sm</item>
+    </style>
+
+    <!-- 48dp 图标动作按钮的通用内边距：24dp 图标在 48dp 内居中。 -->
+    <style name="Widget.CasdonLink.Button.Icon.Action" parent="Widget.CasdonLink.Button.Icon">
+        <item name="android:padding">@dimen/space_md</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">0dp</item>
+        <item name="iconTint">@color/button_tonal_text</item>
+    </style>
+
+    <!-- 二级页面返回按钮：统一使用矢量箭头，避免字体符号在不同系统字体下偏移。 -->
+    <style name="Widget.CasdonLink.Button.Icon.Back" parent="Widget.CasdonLink.Button.Icon.Action">
+        <item name="icon">@drawable/ic_arrow_back</item>
+    </style>
+
+    <!-- 文件页刷新按钮：矢量刷新图标。 -->
+    <style name="Widget.CasdonLink.Button.Icon.Refresh" parent="Widget.CasdonLink.Button.Icon.Action">
+        <item name="icon">@drawable/ic_refresh</item>
+    </style>
+
     <!-- 行内固定宽度主按钮（终端发送） -->
     <style name="Widget.CasdonLink.Button.Inline" parent="Widget.CasdonLink.Button.Primary">
         <item name="android:layout_width">@dimen/control_width_inline</item>
@@ -444,6 +517,18 @@
         <item name="shapeAppearance">@style/ShapeAppearance.CasdonLink.Medium</item>
         <item name="backgroundTint">@android:color/transparent</item>
         <item name="rippleColor">@color/ripple_primary</item>
+    </style>
+
+    <!-- 行内文字按钮（设备状态「详情」等），比常规按钮更紧凑。 -->
+    <style name="Widget.CasdonLink.Button.Text" parent="Widget.CasdonLink.Button.Dialog">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">@dimen/space_md</item>
+        <item name="android:paddingEnd">@dimen/space_md</item>
+        <item name="android:textSize">@dimen/text_label</item>
     </style>
 
     <!--

@@ -1,7 +1,14 @@
 package com.example.casdonlink
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.StyleSpan
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -18,12 +25,14 @@ import com.example.casdonlink.connection.TelnetClient
 import com.example.casdonlink.data.FeatureGate
 import com.example.casdonlink.device.DeviceInfo
 import com.example.casdonlink.device.DeviceRepository
+import com.example.casdonlink.device.StorageUsage
 import com.example.casdonlink.profile.DeviceProfile
 import com.example.casdonlink.profile.FileCheck
 import com.example.casdonlink.profile.LicenseText
 import com.example.casdonlink.profile.ProfileMatcher
 import com.example.casdonlink.profile.ProfileProbe
 import com.example.casdonlink.profile.ProfileStore
+import com.example.casdonlink.ui.StatusGaugeView
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -42,6 +51,8 @@ class DeviceActivity : AppCompatActivity() {
     private var recovering = false
     /** 当前界面绑定的会话；重启后重连会生成新对象，用它判断是否需要重新识别。 */
     private var boundSession: TelnetClient.Session? = null
+    /** 最近一次成功读取的设备概览，供「详情」弹窗与图形化状态卡复用。 */
+    private var lastInfo: DeviceInfo? = null
     private var profiles: List<DeviceProfile> = emptyList()
     private var profileState: ProfileState = ProfileState.Detecting
     /** 完整功能模式下人工选择的机型；重连后仍保留，重新进入设备页时自动识别。 */
@@ -66,7 +77,7 @@ class DeviceActivity : AppCompatActivity() {
         val active = DeviceSessionHolder.session()
         if (active == null && !DeviceSessionHolder.hasTarget()) {
             closing = true
-            toast("设备连接已断开")
+            toast("连接已断开")
             finish()
             return
         }
@@ -74,10 +85,15 @@ class DeviceActivity : AppCompatActivity() {
         boundSession = active
         profiles = ProfileStore(this).load()
         findViewById<TextView>(R.id.deviceTitle).text = DeviceSessionHolder.host
-        renderConnectionState("连接正常")
+        renderConnectionState("已连接")
         applyFeatureGate()
 
         findViewById<Button>(R.id.refreshStatusButton).setOnClickListener { loadStatus(showToast = true) }
+        // 详情弹窗保留完整文本信息；状态卡只展示图形化摘要。
+        findViewById<Button>(R.id.statusDetailButton).apply {
+            isEnabled = false
+            setOnClickListener { showStatusDetails() }
+        }
         findViewById<Button>(R.id.terminalButton).setOnClickListener {
             startActivity(Intent(this, TerminalActivity::class.java)
                 .putExtra(TerminalActivity.EXTRA_HOST, DeviceSessionHolder.host))
@@ -88,6 +104,7 @@ class DeviceActivity : AppCompatActivity() {
         findViewById<Button>(R.id.importPackageButton).setOnClickListener {
             startActivity(Intent(this, PackageActivity::class.java))
         }
+        findViewById<Button>(R.id.rebootDeviceButton).setOnClickListener { confirmRebootDevice() }
         findViewById<Button>(R.id.licenseButton).setOnClickListener { openLicensePage() }
         findViewById<Button>(R.id.quickActionsButton).setOnClickListener { openQuickActions() }
         findViewById<TextView>(R.id.profileBadge).setOnClickListener { showProfileDetails() }
@@ -138,29 +155,150 @@ class DeviceActivity : AppCompatActivity() {
                     recoverSession(showToast = false)
                     return@launch
                 }
-                if (showToast) toast(error.message ?: "状态读取失败")
+                if (showToast) toast(error.message ?: "读取失败")
             } finally {
                 button.isEnabled = true
             }
         }
     }
 
-    /** 状态卡按「系统 / 运行时间 / CPU / 内存 / 存储 / 网络」逐行展示，缺项自动省略。 */
+    /**
+     * 状态卡只保留图形化摘要：内存/系统盘/数据盘使用率环 + 运行时间、CPU 负载、网络三个短信息块。
+     * 完整的系统、处理器、MAC 等文字信息放在「详情」弹窗里，避免状态卡变成一长段文字。
+     */
     private fun renderDeviceInfo(info: DeviceInfo) {
-        val text = buildList {
-            add(if (info.host.isBlank()) info.system else "${info.host} · ${info.system}")
-            add("运行时间 · ${info.uptime}")
-            if (info.cpu.isNotBlank() || info.load.isNotBlank()) {
-                add(buildString {
-                    append("CPU · ").append(info.cpu.ifBlank { "未知" })
-                    if (info.load.isNotBlank()) append(" · 负载 ").append(info.load)
-                })
-            }
-            add("内存 · ${info.memory}")
-            if (info.storage.isNotBlank()) add("存储 · ${info.storage}")
-            if (info.network.isNotBlank()) add("网络 · ${info.network}")
+        lastInfo = info
+        findViewById<Button>(R.id.statusDetailButton).isEnabled = true
+
+        val memory = info.memoryUsage
+        val memoryGauge = findViewById<StatusGaugeView>(R.id.memoryGauge)
+        if (memory == null) {
+            memoryGauge.isVisible = false
+        } else {
+            memoryGauge.isVisible = true
+            memoryGauge.bind(
+                labelText = "内存",
+                percent = memory.usedPercent,
+                detailText = "${memory.usedMb} / ${memory.totalMb} MB",
+                accentColor = healthColor(memory.usedPercent, R.color.primary)
+            )
         }
-        findViewById<TextView>(R.id.deviceStatus).text = text.joinToString("\n")
+
+        bindStorageGauge(findViewById(R.id.rootStorageGauge), info.storageUsage.getOrNull(0))
+        bindStorageGauge(findViewById(R.id.dataStorageGauge), info.storageUsage.getOrNull(1))
+        findViewById<View>(R.id.statusGauges).isVisible =
+            memory != null || info.storageUsage.isNotEmpty()
+
+        val uptime = info.uptime.takeIf { it.isNotBlank() && it != "不可用" }
+        findViewById<View>(R.id.uptimeFact).isVisible = uptime != null
+        findViewById<TextView>(R.id.uptimeValue).text = uptime.orEmpty()
+
+        // 负载只显示 1 分钟值；5/15 分钟与处理器型号放到详情弹窗。
+        val load = info.load.split(' ').firstOrNull().orEmpty()
+        findViewById<View>(R.id.loadFact).isVisible = load.isNotBlank()
+        findViewById<TextView>(R.id.loadValue).text = load
+        findViewById<View>(R.id.statusFacts).isVisible = uptime != null || load.isNotBlank()
+    }
+
+    /** 绑定系统盘/数据盘环；设备没有对应挂载点时隐藏整块。 */
+    private fun bindStorageGauge(gauge: StatusGaugeView, usage: StorageUsage?) {
+        if (usage == null) {
+            gauge.isVisible = false
+            return
+        }
+        gauge.isVisible = true
+        val label = when (usage.mountPoint) {
+            "/" -> "系统盘"
+            "/userdata" -> "数据盘"
+            else -> usage.mountPoint
+        }
+        gauge.bind(
+            labelText = label,
+            percent = usage.usedPercent,
+            detailText = "${usage.usedText}/${usage.sizeText}",
+            accentColor = healthColor(usage.usedPercent, R.color.secondary)
+        )
+    }
+
+    /** 使用率越高越醒目：正常用主题色，70% 起转 primary，90% 起转 error。 */
+    private fun healthColor(percent: Int, normalColor: Int): Int = ContextCompat.getColor(
+        this,
+        when {
+            percent >= 90 -> R.color.error
+            percent >= 70 -> R.color.primary
+            else -> normalColor
+        }
+    )
+
+    /** 状态卡「详情」：完整系统/内存/存储/网络信息，可一键复制。 */
+    private fun showStatusDetails() {
+        val info = lastInfo
+        if (info == null) {
+            toast("状态读取中")
+            return
+        }
+        val body = buildString {
+            appendLine("系统")
+            appendLine("主机名 · ${info.host.ifBlank { "未知" }}")
+            appendLine("系统 · ${info.system}")
+            appendLine("运行时间 · ${info.uptime}")
+            if (info.cpu.isNotBlank()) appendLine("处理器 · ${info.cpu}")
+            if (info.load.isNotBlank()) appendLine("负载 · ${info.load}")
+            appendLine()
+            appendLine("内存")
+            appendLine(info.memory)
+            if (info.storageUsage.isNotEmpty()) {
+                appendLine()
+                appendLine("存储")
+                info.storageUsage.forEach {
+                    appendLine("${it.mountPoint} · 总量 ${it.sizeText} · 已用 ${it.usedText}（${it.usedPercent}%）")
+                }
+            }
+            appendLine()
+            appendLine("网络")
+            appendLine(info.network)
+        }.trimEnd()
+
+        val view = layoutInflater.inflate(R.layout.dialog_status_details, null)
+        view.findViewById<TextView>(R.id.statusDetailText).text = emphasizeSections(body)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("状态详情")
+            .setView(view)
+            .setNegativeButton("关闭", null)
+            .setPositiveButton("复制") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink 设备状态", body))
+                toast("已复制")
+            }
+            .show()
+    }
+
+    /** 把「系统 / 内存 / 存储 / 网络」四个段落标题加粗，正文保持常规字重。 */
+    private fun emphasizeSections(body: String): CharSequence {
+        val spannable = SpannableString(body)
+        listOf("系统", "内存", "存储", "网络").forEach { header ->
+            val start = when {
+                body.startsWith("$header\n") -> 0
+                else -> body.indexOf("\n$header\n").takeIf { it >= 0 }?.plus(1) ?: -1
+            }
+            if (start >= 0) {
+                spannable.setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    start,
+                    start + header.length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+        return spannable
+    }
+
+    /** 清空图形化状态卡，避免断线重连后短暂显示上一次连接的数据。 */
+    private fun clearStatusDashboard() {
+        lastInfo = null
+        findViewById<Button>(R.id.statusDetailButton).isEnabled = false
+        findViewById<View>(R.id.statusGauges).isVisible = false
+        findViewById<View>(R.id.statusFacts).isVisible = false
     }
 
     private fun timeText(): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
@@ -192,10 +330,10 @@ class DeviceActivity : AppCompatActivity() {
                 lost = false
                 session = restored
                 boundSession = restored
-                renderConnectionState("连接已恢复")
+                renderConnectionState("已重连")
                 showLostState(false)
                 resetLicenseSummary()
-                if (showToast) toast("连接已自动恢复")
+                if (showToast) toast("已自动重连")
                 loadStatus(showToast = false)
                 monitorConnection()
                 detectProfile()
@@ -216,8 +354,9 @@ class DeviceActivity : AppCompatActivity() {
         boundSession = null
         runOnUiThread {
             findViewById<TextView>(R.id.deviceState).text = "连接已断开"
+            clearStatusDashboard()
             showLostState(true)
-            toast("设备连接已断开")
+            toast("连接已断开")
         }
     }
 
@@ -232,19 +371,19 @@ class DeviceActivity : AppCompatActivity() {
             try {
                 val restored = DeviceSessionHolder.ensure()
                 if (restored == null) {
-                    toast("仍无法连接设备，请检查网络后重试或返回首页")
+                    toast("仍无法连接，请检查网络后重试")
                     return@launch
                 }
                 lost = false
                 session = restored
                 boundSession = restored
-                renderConnectionState("连接已恢复")
+                renderConnectionState("已重连")
                 showLostState(false)
                 resetLicenseSummary()
                 loadStatus(showToast = false)
                 monitorConnection()
                 detectProfile()
-                toast("连接已恢复")
+                toast("已重连")
             } finally {
                 recovering = false
                 button.isEnabled = true
@@ -267,6 +406,7 @@ class DeviceActivity : AppCompatActivity() {
         findViewById<View>(R.id.statusCard).isVisible = !show
         findViewById<View>(R.id.deviceActionsTitle).isVisible = !show
         findViewById<Button>(R.id.importPackageButton).isVisible = !show
+        findViewById<Button>(R.id.rebootDeviceButton).isVisible = !show
         findViewById<Button>(R.id.disconnectButton).isVisible = !show
         findViewById<View>(R.id.advancedActions).isVisible =
             !show && FeatureGate.isFullModeEnabled(this)
@@ -275,6 +415,40 @@ class DeviceActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.deviceLicense).isVisible = false
         } else {
             renderProfileState()
+        }
+    }
+
+    /** 重启设备前二次确认；重启后设备会短暂离线，页面直接返回首页。 */
+    private fun confirmRebootDevice() {
+        if (closing || lost) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle("重启设备？")
+            .setMessage("将重启设备，请确认设备当前状态")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("重启") { _, _ -> rebootDevice() }
+            .show()
+    }
+
+    private fun rebootDevice() {
+        if (closing || lost) return
+        val active = session ?: return
+        val button = findViewById<Button>(R.id.rebootDeviceButton)
+        button.isEnabled = false
+        DeviceSessionHolder.beginReboot()
+        lifecycleScope.launch {
+            try {
+                // reboot() 内部发送 sync; reboot，并等待设备断开。
+                active.reboot()
+                toast("设备正在重启")
+                closing = true
+                DeviceSessionHolder.endReboot()
+                finish()
+            } catch (error: Exception) {
+                Diagnostics.log("重启设备失败：${error.javaClass.simpleName}: ${error.message}")
+                DeviceSessionHolder.endReboot()
+                button.isEnabled = true
+                toast("重启失败：${error.message ?: error.javaClass.simpleName}")
+            }
         }
     }
 
@@ -297,7 +471,7 @@ class DeviceActivity : AppCompatActivity() {
             lost = false
             session = current
             boundSession = current
-            renderConnectionState("连接已恢复")
+            renderConnectionState("已重连")
             showLostState(false)
             resetLicenseSummary()
             loadStatus(showToast = false)
@@ -410,7 +584,7 @@ class DeviceActivity : AppCompatActivity() {
 
         val licenseLine = findViewById<TextView>(R.id.deviceLicense)
         licenseLine.isVisible = profile != null && licenseSummary != null && !lost
-        licenseLine.text = licenseSummary?.let { "设备授权 · $it" }.orEmpty()
+        licenseLine.text = licenseSummary?.let { "授权 · $it" }.orEmpty()
 
         val showLicense = profile?.license != null
         val showQuick = profile != null &&
@@ -463,7 +637,7 @@ class DeviceActivity : AppCompatActivity() {
     /** 徽标点击：已识别看规则详情，未知/失败看原因与重试入口。 */
     private fun showProfileDetails() {
         when (val state = profileState) {
-            ProfileState.Detecting -> toast("正在识别机型…")
+            ProfileState.Detecting -> toast("识别中…")
             is ProfileState.Matched -> {
                 val profile = state.profile
                 val license = profile.license
@@ -493,12 +667,11 @@ class DeviceActivity : AppCompatActivity() {
             }
             ProfileState.Unknown -> showProfileDialog(
                 "未知机型",
-                "未匹配到内置机型规则。\n\n可点击「重新识别」重试，或点击「手动选择」指定机型；" +
-                    "手动指定后仍可正常补发授权码。"
+                "未匹配到机型规则。\n\n可重试，或手动选择机型。"
             )
             is ProfileState.Failed -> showProfileDialog(
                 "识别失败",
-                "${state.message}\n\n设备连接正常时可直接重试；超时通常说明设备 shell 响应较慢。"
+                "${state.message}\n\n可重试；超时通常是设备响应较慢。"
             )
         }
     }
@@ -534,7 +707,7 @@ class DeviceActivity : AppCompatActivity() {
     /** 完整功能模式下的兜底：识别失败或规则暂未内置时，人工指定机型。 */
     private fun showProfilePicker() {
         if (profiles.isEmpty()) {
-            toast("没有可用的内置机型规则")
+            toast("没有可用机型规则")
             return
         }
         val names = buildList {
@@ -553,7 +726,7 @@ class DeviceActivity : AppCompatActivity() {
                     manualProfile = profiles[which - 1]
                     profileState = ProfileState.Matched(manualProfile!!, manual = true, matched = listOf(manualProfile!!))
                     renderProfileState()
-                    toast("已手动选择 ${manualProfile!!.name}")
+                    toast("已选择 ${manualProfile!!.name}")
                 }
             }
             .show()

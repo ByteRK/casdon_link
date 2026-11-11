@@ -72,14 +72,14 @@ class QuickActionsActivity : AppCompatActivity() {
         applySystemBarInsets()
 
         if (!FeatureGate.isFullModeEnabled(this)) {
-            toast("快捷操作需要先开启完整功能")
+            toast("请先开启完整功能")
             finish()
             return
         }
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
         val loaded = profileId?.let { ProfileStore(this).find(it) }
         if (loaded == null || !loaded.hasQuickActions) {
-            toast("该机型没有配置快捷操作")
+            toast("该机型无快捷操作")
             finish()
             return
         }
@@ -107,7 +107,7 @@ class QuickActionsActivity : AppCompatActivity() {
             adapter = this@QuickActionsActivity.adapter
         }
         adapter.submitList(buildRows())
-        setStatus("选择一项操作")
+        setStatus("请选择操作")
     }
 
     private fun applySystemBarInsets() {
@@ -135,7 +135,7 @@ class QuickActionsActivity : AppCompatActivity() {
 
     private fun confirmAction(action: QuickAction) {
         if (running) {
-            toast("请等待当前操作完成")
+            toast("请等待操作完成")
             return
         }
         if (!action.confirm && !action.danger) {
@@ -144,11 +144,9 @@ class QuickActionsActivity : AppCompatActivity() {
         }
         val message = buildString {
             if (action.description.isNotBlank()) append(action.description).append("\n\n")
-            append("将执行该动作配置的命令队列")
-            append(if (action.commands.size > 1) "（共 ${action.commands.size} 条）" else "")
-            append("。")
-            if (action.danger) append("\n\n这是危险操作，执行后可能不可恢复。")
-            if (action.reboot) append("\n\n动作结束会重启设备。")
+            append("将执行 ${action.commands.size} 条命令。")
+            if (action.danger) append("\n\n危险操作，可能不可恢复。")
+            if (action.reboot) append("\n\n结束后重启设备。")
         }
         MaterialAlertDialogBuilder(this)
             .setTitle(action.label)
@@ -171,10 +169,10 @@ class QuickActionsActivity : AppCompatActivity() {
             var rebooted = false
             var rebootTimedOut = false
             try {
-                val session = DeviceSessionHolder.ensure() ?: error("设备连接已断开")
+                val session = DeviceSessionHolder.ensure() ?: error("连接已断开")
                 for ((index, command) in action.commands.withIndex()) {
                     if (cancelled) {
-                        output.append("已停止，未执行后续命令。\n")
+                        output.append("已停止。\n")
                         break
                     }
                     setStatus("执行中 · ${index + 1}/${action.commands.size}")
@@ -188,21 +186,21 @@ class QuickActionsActivity : AppCompatActivity() {
                     }
                 }
                 if (failure == null && action.reboot && !cancelled) {
-                    setStatus("设备正在重启…")
+                    setStatus("重启中…")
                     val previousBootId = runCatching {
                         session.execute("cat /proc/sys/kernel/random/boot_id", timeoutMs = 3_000).trim()
                     }.getOrNull()
                     rebootBaselineId = previousBootId
                     DeviceSessionHolder.beginReboot()
                     session.reboot()
-                    setStatus("等待设备重新上线…")
+                    setStatus("等待上线…")
                     val restored = DeviceSessionHolder.reconnectAfterReboot(90_000, previousBootId)
                     if (restored == null) {
-                        failure = "设备未在 90 秒内重新上线，可能已更换 IP"
+                        failure = "设备 90 秒内未上线，可能已换 IP"
                         rebootTimedOut = true
                     } else {
                         rebooted = true
-                        toast("设备已重新上线")
+                        toast("设备已上线")
                     }
                 }
             } catch (error: Exception) {
@@ -214,9 +212,9 @@ class QuickActionsActivity : AppCompatActivity() {
                 val stopped = cancelled
                 when {
                     reason != null -> {
-                        setStatus(if (rebootTimedOut) "设备未重新上线" else "执行失败")
-                        val title = if (rebootTimedOut) "设备未重新上线" else "执行失败"
-                        val hint = if (rebootTimedOut) "\n\n可点击下方「重试连接」继续等待设备上线。" else ""
+                        setStatus(if (rebootTimedOut) "设备未上线" else "执行失败")
+                        val title = if (rebootTimedOut) "设备未上线" else "执行失败"
+                        val hint = if (rebootTimedOut) "\n\n可重试连接。" else ""
                         showResult(
                             title,
                             output.toString().ifBlank { reason } + "\n\n$reason$hint",
@@ -229,7 +227,7 @@ class QuickActionsActivity : AppCompatActivity() {
                         else toast("已停止")
                     }
                     rebooted -> {
-                        setStatus("已重启并重新上线")
+                        setStatus("已重启上线")
                         finish()
                     }
                     action.output || output.isNotBlank() -> {
@@ -252,20 +250,20 @@ class QuickActionsActivity : AppCompatActivity() {
         // 重试等待期间不显示「停止」：这里没有可中断的设备命令，停止按钮会误导。
         setRunning(false)
         findViewById<TextView>(R.id.quickToolbarStatus).text = "等待上线…"
-        setStatus("等待设备重新上线…")
+        setStatus("等待上线…")
         lifecycleScope.launch {
             try {
                 val restored = DeviceSessionHolder.reconnectAfterReboot(60_000, rebootBaselineId)
                 if (restored == null) {
-                    setStatus("设备仍未上线")
+                    setStatus("设备未上线")
                     showResult(
-                        "设备仍未上线",
-                        "设备在 60 秒内仍未重新上线。\n请返回首页检查设备网络后再连接。",
+                        "设备未上线",
+                        "设备在 60 秒内仍未上线，请检查网络后重连。",
                         onRetry = { retryReconnectAfterReboot() }
                     )
                 } else {
-                    setStatus("设备已重新上线")
-                    toast("设备已重新上线")
+                    setStatus("设备已上线")
+                    toast("设备已上线")
                     finish()
                 }
             } finally {
@@ -279,7 +277,7 @@ class QuickActionsActivity : AppCompatActivity() {
         if (!running || cancelled) return
         cancelled = true
         findViewById<Button>(R.id.quickStop).isEnabled = false
-        setStatus("将在当前命令结束后停止")
+        setStatus("当前命令结束后停止")
     }
 
     private fun setRunning(value: Boolean) {

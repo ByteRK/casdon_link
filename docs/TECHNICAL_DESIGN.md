@@ -40,6 +40,10 @@ Android App 在与嵌入式 Linux 设备同一局域网时，通过内置 Telnet
 
 优先组合设备常见接口读取信息，如 `uname`、`hostname`、`/proc/uptime`、`/proc/meminfo`、`/proc/stat`、`df`、`ip` 或 BusyBox `ifconfig`。命令需检测可用性并允许字段缺失；解析失败显示“不可用”，不令整页失败。CPU 使用率可在两次 `/proc/stat` 采样间隔后计算；存储值来自 `df`，并标明挂载路径。
 
+设备页状态卡使用结构化解析结果做图形化展示：内存/系统盘/数据盘用环形指标（70% 起转 primary、90% 起转 error），运行时间与 CPU 负载（1 分钟值）用短信息块；网络 IP 已在顶部栏显示，状态卡不再重复。主机名、内核、处理器型号、MAC 与完整存储明细放在「详情」弹窗，可一键复制。解析层同时保留字符串摘要（兼容既有展示与单元测试）和结构化字段 `MemoryUsage`、`StorageUsage`、`NetworkDetail`，缺项时对应控件整块隐藏。
+
+设备页的「重启设备」始终可用，不受完整功能开关限制；二次确认后调用 `Session.reboot()`（内部发送 `sync; reboot`），页面随即返回首页，设备上线后由用户重新连接。
+
 ### 目录与文件操作
 
 通过 shell 命令列出路径、读取文本和执行文件管理。对路径参数进行可靠的 shell 转义；禁止拼接未经校验的用户输入。列目录时采用可解析的结构化输出，并区分文件、目录、大小和权限；结构化命令应避免 `!` 等会触发交互式 shell 历史展开的字符，设备不配合时退回 `ls -1ap`（以结尾 `/` 判断目录），保证至少能浏览。文件大小只读取元数据（`stat -c %s`，仅在不可用时对普通文件退回 `wc`），不得通过读取文件内容获取大小：设备节点和管道会阻塞，大文件也会拖慢整个目录。二进制文件不可直接作为 Telnet 文本回显；下载使用编码分块或 HTTP 文件接收机制，上传使用 HTTP `wget` 首选。重命名/删除前提供目标确认，写入失败呈现设备原始错误摘要。
@@ -163,13 +167,15 @@ Material Design 3 约束：
 - 形状：全局只有两档圆角——`corner_medium`（12dp）用于按钮、输入框、徽标、图标按钮；`corner_large`（16dp）用于卡片、弹窗、菜单、浮空按钮。禁止胶囊/`full` 形状和自定义不规则形状库；对话框动作按钮也用 12dp。
 - 层级：页面底色 `surface`，卡片 `surfaceContainerLow`，菜单 `surfaceContainer`，弹窗与 tonal 按钮 `surfaceContainerHigh`，输入框 `surfaceContainerHighest`。主题关闭 `elevationOverlayEnabled`，卡片/按钮/FAB 的 elevation 固定为 0，不靠阴影区分层级。
 - 文字：统一使用 MD3 type scale（`TextAppearance.Material3.*` 作为父样式），标题/正文/标签颜色取 MD3 color role。
+- 文案：按钮/标签用 2–4 字，说明类文字尽量控制在 1 行；可展开的完整信息（设备状态、授权记录、日志）放「详情」弹窗；安全警告保留，但压缩到最短的可执行表述。
 - 颜色：`colors.xml` 以 MD3 角色为主（`surface*`、`surfaceContainer*`、`on_surface*`、`primary*`、`secondary*`、`error*`、`outline*`），并保留 `text_primary`/`text_secondary`/`danger` 等旧语义别名供 Kotlin 使用。新增颜色先判断能否复用已有角色。
 - 尺寸：`dimens.xml` 中 `space_*` 为 4dp 栅格间距；`corner_*` 为圆角；`screen_padding_*`、`card_padding`、`row_padding` 控制留白；`control_height*`、`text_field_height`、`toolbar_height`、`list_row_height` 控制控件尺寸；`text_*` 为字号。禁止在布局中重复写同类数值。
 - `styles.xml`：`Text.*` 只描述文字（字号、颜色、字重、行距），`Widget.*` 描述完整控件（尺寸、背景、内边距、文字）。常用项：
   - 文字：`Text.CasdonLink.Eyebrow`（顶部小标题）、`HeroTitle`/`ScreenTitle`/`ToolbarTitle`/`SectionTitle`（层级标题）、`Subtitle`/`Label`/`Caption`/`MultilineCaption`、`Body`/`MultilineBody`、`Status`、`Mono`、`ListItemTitle`/`ListItemStrongTitle`/`ListItemMeta`（含 `.Danger` 失败色变体）、`DialogTitle`。
   - 超长标题：`ToolbarTitle` 与 `ListItemStrongTitle` 已内置单行跑马灯（`singleLine` + `ellipsize=marquee` + `marqueeRepeatLimit=marquee_forever` + `selected=true`），文本未超出宽度时不会滚动；使用时父布局必须给出宽度约束（`0dp` + `layout_weight`，或 `match_parent`）。RecyclerView 行内复用需在绑定后再设一次 `isSelected`，否则文本换新后跑马灯不会启动。
   - 容器：`Screen.Scroll`/`Screen.ScrollContent`/`Screen.Column`、`Card`、`Toolbar`、`List`、`ListRow`/`ListRowBlock`、`RecentDeviceRow`。卡片背景 `bg_card` 为纯 `surfaceContainerLow` 圆角矩形，无描边、无阴影。
-  - 按钮：`Button.Primary`（实心 primary）、`Button.Secondary`（MD3 outlined）、`Button.Small`（小号 outlined）、`Button.Danger`（outlined error）、`Button.Icon`（tonal 图标按钮）、`Button.Inline`（行内固定宽度）、`Button.Dialog`（弹窗文字按钮）。统一 12dp 圆角、0 elevation，文字/描边使用带禁用态的 ColorStateList。
+  - 按钮：`Button.Primary`（实心 primary）、`Button.Secondary`（MD3 outlined）、`Button.Small`（小号 outlined）、`Button.Danger`（outlined error）、`Button.Icon`（tonal 图标按钮）、`Button.Icon.Back`（48dp 矢量返回箭头）、`Button.Icon.Refresh`（48dp 矢量刷新）、`Button.Icon.Small`（40dp 紧凑图标）、`Button.Inline`（行内固定宽度）、`Button.Dialog`（弹窗文字按钮）。统一 12dp 圆角、0 elevation，文字/描边使用带禁用态的 ColorStateList。
+  - 图标按钮：返回、刷新等操作必须使用矢量 drawable（`app:icon`）而不是 `‹`、`↻` 等字体符号；字体符号在不同系统字体下容易偏移，无法保证在 48dp 按钮里居中。返回图标使用 `ic_arrow_back` 并开启 `autoMirrored`。
   - 输入：`EditText`、`EditText.Port`，背景 `bg_input`（surfaceContainerHighest + 1dp outline + 12dp）。
 - 系统栏：页面创建时必须调用 `ui/SystemBars.kt` 的 `applyDarkSystemBars()`，不要直接调用 `enableEdgeToEdge()`。后者默认的 `SystemBarStyle.auto` 按**系统**深色/浅色模式决定图标深浅，在系统浅色模式下会给深色图标，落在 `surface` 上就看不见；本应用固定深色主题，因此固定用 `SystemBarStyle.dark`（透明底 + 浅色图标），与主题里的 `windowLightStatusBar`/`windowLightNavigationBar` = false 一致。
 - 启动图标：全部为矢量，项目已不含位图图标。
@@ -242,7 +248,7 @@ Material Design 3 约束：
 - 完整功能模式下可手动选择机型，徽标显示“手动 · 机型名”，授权确认仍需核对 PID。
 - 徽标点击展示规则详情，包括 PID、网卡、授权路径、命中条件和冲突提示。
 
-### 12.4 补发授权码
+### 12.4 授权码（补发/清除）
 
 独立页面 `LicenseActivity` 负责完整流程：
 
@@ -255,6 +261,7 @@ Material Design 3 约束：
 7. 旧 socket 在 reboot 后可能仍保持打开但已不响应，`reconnectAfterReboot` 会主动关闭旧会话，只接受新握手，避免提前显示成功。
 8. 若设备更换 IP，无法自动找回；等待超时后提示“可能已更换 IP，请重新连接”。
 9. 设备重启并重新连接后，自动从设备重新读取授权文件并回填上方「当前授权」卡片（PID、DID、授权码；授权码仍只显示首尾）。成功结果不输出服务端返回的授权码：下方「操作」区只显示“设备已重新上线，已从设备读取当前授权”。若重连后读不到可解析的授权，卡片会明确提示，点击卡片可重新读取。
+10. 当前授权卡片提供「清除授权码」：二次确认后 `rm -f` 删除授权文件、`sync` 并重启；重启前记录 boot_id，上线后自动重新读取，卡片变为“未授权”。清除操作不写入授权记录。
 
 服务端地址以 XOR 字节数组存放并在运行时还原，避免明文出现在源码/资源中；这只能提高静态扫描门槛，不是安全边界。debug 构建可用 `-PauthBaseUrl=http://<host>:<port>` 指向本地平台，release 始终使用内置生产地址。
 
@@ -262,7 +269,7 @@ Material Design 3 约束：
 
 `LicenseHistoryStore` 在 `filesDir/license_records.json` 保存最近 200 条记录：时间、地址、机型、PID、MAC、DID、授权码、模式、目标路径、结果、错误信息、App 版本。授权码用 Android Keystore 加密后落盘；导出 JSON 时还原完整字段，导出文件按敏感文件管理。
 
-记录在申请前创建，随后更新为“已分配/已写入/成功/失败”；应用中途被杀也能看到最后一次状态。授权页提供“导出授权记录”，通过系统文件选择器保存 `CasdonLink_license_records_<时间>.json`。
+记录在申请前创建，随后更新为“已分配/已写入/成功/失败”；应用中途被杀也能看到最后一次状态。授权页只负责补发流程，不展示历史记录或导出入口；记录统一在设置页查看/导出，通过系统文件选择器保存 `CasdonLink_license_records_<时间>.json`。
 
 ### 12.6 快捷操作
 

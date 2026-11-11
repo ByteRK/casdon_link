@@ -41,18 +41,27 @@ internal fun parseDeviceInfo(raw: String): DeviceInfo {
     val uptime = parseUptime(field(lines, "UPTIME").substringBefore(' '))
     val cpu = field(lines, "CPU").substringAfter(':', "").trim().ifBlank { field(lines, "CPU") }
     val load = field(lines, "LOAD").split(' ').filter(String::isNotBlank).take(3).joinToString(" ")
+    val memoryText = field(lines, "MEM")
+    val networkText = field(lines, "NET")
+    val mac = field(lines, "MAC")
+    val storageUsage = listOfNotNull(
+        parseDfUsage(field(lines, "DF")),
+        parseDfUsage(field(lines, "DF2"))
+    )
     return DeviceInfo(
         host = field(lines, "HOST"),
         system = system,
         uptime = uptime,
         cpu = cpu,
         load = load,
-        memory = parseMemory(field(lines, "MEM")),
-        storage = listOfNotNull(
-            parseDfLine(field(lines, "DF"))?.let { "/ $it" },
-            parseDfLine(field(lines, "DF2"))?.let { "/userdata $it" }
-        ).joinToString(" · "),
-        network = parseNetwork(field(lines, "NET"), field(lines, "MAC"))
+        memory = parseMemory(memoryText),
+        storage = storageUsage.joinToString(" · ") {
+            "${it.mountPoint} ${it.sizeText} 已用 ${it.usedPercent}%"
+        },
+        network = parseNetwork(networkText, mac),
+        memoryUsage = parseMemoryUsage(memoryText),
+        storageUsage = storageUsage,
+        networkDetail = parseNetworkDetail(networkText, mac)
     )
 }
 
@@ -65,10 +74,25 @@ internal fun parseUptime(secondsText: String): String {
     return if (days > 0) "${days}天 ${hours}小时" else "${hours}小时 ${minutes}分钟"
 }
 
-/** `/proc/meminfo` 的 MemTotal/MemAvailable；设备缺少时返回「内存信息不可用」。 */
-internal fun parseMemory(text: String): String {
+/** 读取 MemTotal/MemAvailable；返回 kB 值，缺失项为 null。 */
+private fun memoryValues(text: String): Pair<Long?, Long?> {
     val total = Regex("MemTotal:\\s*(\\d+)\\s*kB").find(text)?.groupValues?.get(1)?.toLongOrNull()
     val available = Regex("MemAvailable:\\s*(\\d+)\\s*kB").find(text)?.groupValues?.get(1)?.toLongOrNull()
+    return total to available
+}
+
+/** 供环形指标使用的内存使用率；只有总量和可用量都有效时才生成。 */
+internal fun parseMemoryUsage(text: String): MemoryUsage? {
+    val (totalKb, availableKb) = memoryValues(text)
+    if (totalKb == null || availableKb == null) return null
+    val totalMb = totalKb / 1024
+    if (totalMb <= 0) return null
+    return MemoryUsage(totalMb = totalMb, availableMb = availableKb / 1024)
+}
+
+/** `/proc/meminfo` 的 MemTotal/MemAvailable；设备缺少时返回「内存信息不可用」。 */
+internal fun parseMemory(text: String): String {
+    val (total, available) = memoryValues(text)
     if (total == null && available == null) return "内存信息不可用"
     return buildList {
         total?.let { add("总内存 ${"%.0f MB".format(it / 1024.0)}") }
@@ -78,25 +102,40 @@ internal fun parseMemory(text: String): String {
 
 /**
  * `df -h` 的数据行：`文件系统 总量 已用 可用 使用率 挂载点`。
- * 只展示容量与使用率，挂载点由调用方补充，避免重复；表头/异常行返回 null。
+ * 只解析容量与使用率，挂载点用于区分系统盘/数据盘；表头/异常行返回 null。
  */
-internal fun parseDfLine(line: String?): String? {
+internal fun parseDfUsage(line: String?): StorageUsage? {
     val fields = line?.trim()?.split(Regex("\\s+")).orEmpty()
     if (fields.size < 6) return null
     val size = fields[1]
-    val percent = fields[4]
+    val used = fields[2]
+    val percentText = fields[4]
     if (!size.matches(Regex("\\d+(?:\\.\\d+)?[KMGTPE]?", RegexOption.IGNORE_CASE))) return null
-    if (!percent.matches(Regex("\\d+%"))) return null
-    return "$size 已用 $percent"
+    if (!percentText.matches(Regex("\\d+%"))) return null
+    return StorageUsage(
+        mountPoint = fields[5],
+        sizeText = size,
+        usedText = used,
+        usedPercent = percentText.removeSuffix("%").toInt()
+    )
 }
 
-/** 从 `ip addr`/`ifconfig` 输出里取 IPv4 地址，并与 MAC 组合成一行摘要。 */
-internal fun parseNetwork(addressText: String, mac: String): String {
+/** 兼容旧的字符串展示：`94.0M 已用 42%`。 */
+internal fun parseDfLine(line: String?): String? =
+    parseDfUsage(line)?.let { "${it.sizeText} 已用 ${it.usedPercent}%" }
+
+/** 从 `ip addr`/`ifconfig` 输出里取 IPv4 地址，并与 MAC 组合成结构化摘要。 */
+internal fun parseNetworkDetail(addressText: String, mac: String): NetworkDetail? {
     val ip = Regex("inet\\s+(?:addr:)?([0-9]+(?:\\.[0-9]+){3}(?:/\\d+)?)").find(addressText)
         ?.groupValues?.get(1)
     val cleanMac = mac.trim().uppercase()
-    return buildList {
-        ip?.let { add(it) }
-        cleanMac.takeIf { it.matches(Regex("(?:[0-9A-F]{2}:){5}[0-9A-F]{2}")) }?.let { add(it) }
-    }.joinToString(" · ").ifBlank { "网络信息不可用" }
+        .takeIf { it.matches(Regex("(?:[0-9A-F]{2}:){5}[0-9A-F]{2}")) }
+    if (ip == null && cleanMac == null) return null
+    return NetworkDetail(ip = ip, mac = cleanMac)
 }
+
+/** 兼容旧的字符串展示：IP 与 MAC 用 ` · ` 连接，都缺失时返回「网络信息不可用」。 */
+internal fun parseNetwork(addressText: String, mac: String): String =
+    parseNetworkDetail(addressText, mac)
+        ?.let { listOfNotNull(it.ip, it.mac).joinToString(" · ") }
+        ?: "网络信息不可用"

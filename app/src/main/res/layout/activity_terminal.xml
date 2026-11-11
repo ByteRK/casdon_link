@@ -7,8 +7,8 @@
 
         <Button
             android:id="@+id/backButton"
-            style="@style/Widget.CasdonLink.Button.Icon"
-            android:text="‹" />
+            style="@style/Widget.CasdonLink.Button.Icon.Back"
+            android:contentDescription="返回设备页" />
 
         <TextView
             android:id="@+id/terminalTitle"

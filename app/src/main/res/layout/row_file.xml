@@ -2,10 +2,10 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/Widget.CasdonLink.ListRow">
 
-    <TextView
+    <ImageView
         android:id="@+id/fileIcon"
-        style="@style/Text.CasdonLink.IconGlyph"
-        android:text="•" />
+        style="@style/Widget.CasdonLink.FileIcon"
+        android:contentDescription="@null" />
 
     <LinearLayout
         android:layout_width="0dp"

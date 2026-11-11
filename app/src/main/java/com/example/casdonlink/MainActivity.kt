@@ -88,7 +88,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.diagnoseButton).setOnClickListener {
             val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()
             if (!isValidHost(host)) {
-                showMessage("请先输入有效的 IP 或主机名")
+                showMessage("请输入有效地址")
                 return@setOnClickListener
             }
             runNetworkDiagnostics(host, parsePort(findViewById<EditText>(R.id.portInput).text.toString().trim()))
@@ -111,12 +111,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun connect(host: String, portText: String, usernameText: String = "", passwordText: String = "") {
         if (!isValidHost(host)) {
-            showMessage("请输入有效的 IP 或主机名")
+            showMessage("请输入有效地址")
             return
         }
         val port = parsePort(portText)
         if (port == null) {
-            showMessage("端口需为 1-65535 之间的整数")
+            showMessage("端口范围 1-65535")
             return
         }
         // 输入框留空时复用该地址已保存的登录信息；手动填写的值优先。
@@ -199,7 +199,7 @@ class MainActivity : AppCompatActivity() {
             append(Diagnostics.dump())
             val host = findViewById<EditText>(R.id.ipInput).text.toString().trim()
             if (host.isNotBlank() && Diagnostics.suggestsNetworkIssue()) {
-                append("\n\n提示：TCP 连接超时通常意味着网络层不通（不同网段 / AP 隔离 / 防火墙）。\n点击「网络诊断」可查看网段判断与端口探测结果。")
+                append("\n\n提示：TCP 超时通常是网络层不通，可运行「网络诊断」查看详情。")
             }
         }
         showTextDialog(title, body)
@@ -233,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             // 单击只回填表单，是否连接交给用户确认；长按菜单里保留一键连接。
             onClick = { record ->
                 fillInputs(record)
-                showMessage("已回填 ${record.address}，点击「连接设备」继续")
+                showMessage("已回填 ${record.address}")
             },
             onLongClick = { record -> showRecordActions(record) }
         )
@@ -358,15 +358,15 @@ class MainActivity : AppCompatActivity() {
         val label = record.name.ifBlank { record.address }
         val actions = buildList {
             add("连接")
-            add("编辑名称与地址")
-            if (record.hasPassword) add("清除已保存密码")
+            add("编辑设备")
+            if (record.hasPassword) add("清除密码")
             add("删除记录")
         }
         MaterialAlertDialogBuilder(this).setTitle(label).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
                 "连接" -> connectFromRecord(record)
-                "编辑名称与地址" -> editRecord(record)
-                "清除已保存密码" -> {
+                "编辑设备" -> editRecord(record)
+                "清除密码" -> {
                     deviceStore.save(record.copy(password = ""))
                     renderRecentDevices()
                     showMessage("已清除保存的密码")
@@ -405,7 +405,7 @@ class MainActivity : AppCompatActivity() {
             setText(record.username)
         }
         val passwordField = view.findViewById<EditText>(R.id.editPassword).apply {
-            hint = if (record.hasPassword) "密码（留空不修改）" else "密码（可选）"
+            hint = if (record.hasPassword) "密码（留空不改）" else "密码"
         }
         val clearPassword = view.findViewById<CheckBox>(R.id.editClearPassword).apply {
             isVisible = record.hasPassword
@@ -426,12 +426,12 @@ class MainActivity : AppCompatActivity() {
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 val newHost = ipField.text.toString().trim()
                 if (!isValidHost(newHost)) {
-                    ipField.error = "请输入有效的 IP 或主机名"
+                    ipField.error = "请输入有效地址"
                     return@setOnClickListener
                 }
                 val newPort = parsePort(portField.text.toString().trim())
                 if (newPort == null) {
-                    portField.error = "端口需为 1-65535"
+                    portField.error = "端口范围 1-65535"
                     return@setOnClickListener
                 }
                 val newPassword = when {

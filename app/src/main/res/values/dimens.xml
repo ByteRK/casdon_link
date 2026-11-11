@@ -58,7 +58,6 @@
     <dimen name="text_screen_title">28sp</dimen>
     <dimen name="text_hero">32sp</dimen>
     <dimen name="text_icon">24sp</dimen>
-    <dimen name="text_glyph">20sp</dimen>
     <dimen name="text_mono">13sp</dimen>
 
 </resources>

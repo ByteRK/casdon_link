@@ -2,7 +2,7 @@
     <string name="app_name">CasdonLink</string>
 
     <!-- 首页底部「版本与版权」声明；英文表述，三行保持同一语言风格。 -->
-    <string name="about_version">Version %1$s (Build %2$d)</string>
+    <string name="about_version">v%1$s (%2$d)</string>
     <string name="about_build_time">Built %1$s</string>
     <string name="about_copyright">© 2026 Ricken. All rights reserved.</string>
 </resources>

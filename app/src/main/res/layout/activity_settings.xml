@@ -9,9 +9,8 @@
 
         <Button
             android:id="@+id/settingsBack"
-            style="@style/Widget.CasdonLink.Button.Icon"
-            android:contentDescription="返回首页"
-            android:text="‹" />
+            style="@style/Widget.CasdonLink.Button.Icon.Back"
+            android:contentDescription="返回首页" />
 
         <TextView
             android:id="@+id/settingsTitle"
@@ -98,7 +97,7 @@
                     android:id="@+id/settingsClearDevices"
                     style="@style/Widget.CasdonLink.Button.Small"
                     android:layout_marginTop="@dimen/space_md"
-                    android:text="清空全部设备记录" />
+                    android:text="清空设备记录" />
 
                 <TextView
                     style="@style/Text.CasdonLink.Label"
@@ -114,7 +113,7 @@
                     android:id="@+id/settingsClearPasswords"
                     style="@style/Widget.CasdonLink.Button.Small"
                     android:layout_marginTop="@dimen/space_md"
-                    android:text="清除全部已保存密码" />
+                    android:text="清除已保存密码" />
             </LinearLayout>
 
             <LinearLayout
@@ -123,7 +122,7 @@
 
                 <TextView
                     style="@style/Text.CasdonLink.Label"
-                    android:text="修复包缓存" />
+                    android:text="设备修复缓存" />
 
                 <TextView
                     android:id="@+id/settingsCacheValue"
@@ -183,7 +182,7 @@
                 <TextView
                     style="@style/Text.CasdonLink.MultilineCaption"
                     android:layout_marginTop="@dimen/space_sm"
-                    android:text="导出文件包含完整授权码，请按敏感文件保管。" />
+                    android:text="导出文件含完整授权码，请妥善保管。" />
             </LinearLayout>
 
             <TextView
@@ -202,7 +201,7 @@
                 <TextView
                     style="@style/Text.CasdonLink.MultilineCaption"
                     android:layout_marginTop="10dp"
-                    android:text="最近一次连接/操作的内存日志，可复制或分享。" />
+                    android:text="最近连接/操作日志，可复制或分享。" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -241,7 +240,7 @@
                     android:id="@+id/settingsCheckAuth"
                     style="@style/Widget.CasdonLink.Button.Small"
                     android:layout_marginTop="@dimen/space_md"
-                    android:text="检测授权服务" />
+                    android:text="检测服务" />
             </LinearLayout>
 
             <TextView
@@ -266,7 +265,7 @@
                     android:id="@+id/settingsCopyVersion"
                     style="@style/Widget.CasdonLink.Button.Small"
                     android:layout_marginTop="@dimen/space_md"
-                    android:text="复制版本信息" />
+                    android:text="复制版本" />
 
                 <Button
                     android:id="@+id/settingsPrivacy"

@@ -122,11 +122,11 @@ class PackageActivity : AppCompatActivity() {
 
     private fun renderEmptyState() {
         findViewById<TextView>(R.id.packageTitle).apply {
-            text = "修复包"
+            text = "设备修复"
             isSelected = true
         }
         findViewById<TextView>(R.id.packageDescription).text =
-            "请选择官方签名的 .clpkg 加密修复包；导入时无需输入密码。"
+            "选择官方签名 .clpkg 文件。"
         findViewById<TextView>(R.id.packageProgress).text = "未选择"
         states.clear()
         renderSteps()
@@ -137,7 +137,7 @@ class PackageActivity : AppCompatActivity() {
         if (importing || running) return
         importing = true
         updateControls()
-        val busy = showBusy("正在导入修复包", "正在校验官方签名并解密…")
+        val busy = showBusy("导入中", "校验签名…")
         lifecycleScope.launch {
             val temp = File(cacheDir, "package_import_${System.currentTimeMillis()}.zip")
             var result: PackageImporter.ImportedPackage? = null
@@ -177,25 +177,25 @@ class PackageActivity : AppCompatActivity() {
                     append(loaded.manifest.description).append('\n')
                 }
                 append("ID · ").append(loaded.manifest.packageId)
-                append(" · 共 ").append(loaded.manifest.steps.size).append(" 个步骤 · 官方签名已校验")
+                append(" · ").append(loaded.manifest.steps.size).append(" 步 · 已验签")
             }
             findViewById<TextView>(R.id.packageProgress).text = "${states.size} 步"
             renderSteps()
             updateControls()
-            toast("修复包已导入")
+            toast("已导入")
         }
     }
 
     private fun friendlyImportError(error: Exception): String = when (error) {
-        is PackageDecryptException -> error.message ?: "修复包校验失败"
-        is java.util.zip.ZipException -> "修复包 ZIP 无效：${error.message ?: "无法解析"}"
+        is PackageDecryptException -> error.message ?: "设备修复校验失败"
+        is java.util.zip.ZipException -> "设备修复 ZIP 无效：${error.message ?: "无法解析"}"
         else -> error.message ?: error.javaClass.simpleName
     }
 
     private fun showImportFailure(message: String) {
         MaterialAlertDialogBuilder(this)
             .setTitle("导入失败")
-            .setMessage("$message\n\n请确认选择的是官方签名修复包（.clpkg），或重新选择文件。")
+            .setMessage("$message\n\n请确认是官方签名 .clpkg，或重新选择。")
             .setPositiveButton("重试") { _, _ -> lastUri?.let { startImport(it) } }
             .setNeutralButton("重新选择") { _, _ -> picker.launch(arrayOf("*/*")) }
             .setNegativeButton("关闭", null)
@@ -247,7 +247,7 @@ class PackageActivity : AppCompatActivity() {
         if (states.any { it.status == StepStatus.SUCCESS }) {
             MaterialAlertDialogBuilder(this)
                 .setTitle("再次执行？")
-                .setMessage("将从头重新执行全部 ${pkg.manifest.steps.size} 个步骤。")
+                .setMessage("将从头执行全部 ${pkg.manifest.steps.size} 步。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("从头开始") { _, _ -> startRun(0) }
                 .show()
@@ -259,8 +259,7 @@ class PackageActivity : AppCompatActivity() {
     private fun confirmRun(pkg: PackageImporter.ImportedPackage) {
         val summary = "包 ID · ${pkg.manifest.packageId}\n" +
             "${pkg.manifest.name} · ${pkg.manifest.version}\n" +
-            "共 ${pkg.manifest.steps.size} 个步骤，将按顺序自动执行。\n" +
-            "开始后不能主动停止，请保持设备连接。"
+            "${pkg.manifest.steps.size} 步，按顺序自动执行；开始后不可停止。"
         MaterialAlertDialogBuilder(this)
             .setTitle("确认执行？")
             .setMessage(summary)
@@ -300,13 +299,13 @@ class PackageActivity : AppCompatActivity() {
                     currentIndex = index
                     val step = pkg.manifest.steps[index]
                     val session = try {
-                        DeviceSessionHolder.ensure() ?: throw IllegalStateException("设备连接已断开")
+                        DeviceSessionHolder.ensure() ?: throw IllegalStateException("连接已断开")
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        states[index] = StepState(StepStatus.FAILED, error.message ?: "设备连接已断开")
+                        states[index] = StepState(StepStatus.FAILED, error.message ?: "连接已断开")
                         fatalIndex = index
-                        fatalMessage = error.message ?: "设备连接已断开"
+                        fatalMessage = error.message ?: "连接已断开"
                         renderSteps()
                         break
                     }
@@ -413,8 +412,8 @@ class PackageActivity : AppCompatActivity() {
                     updateProgress(success + failed, total)
                     showPartialSummary(success, failed, pending)
                 } else {
-                    findViewById<TextView>(R.id.packageProgress).text = "全部完成 · $total 步"
-                    toast("修复步骤已完成")
+                    findViewById<TextView>(R.id.packageProgress).text = "完成 · $total 步"
+                    toast("已完成")
                 }
             }
         }
@@ -435,7 +434,7 @@ class PackageActivity : AppCompatActivity() {
             .setMessage(
                 "$stepLabel 失败：\n$message\n\n" +
                     "成功 $success · 失败 $failed · 未执行 $pending\n" +
-                    "耗时 ${formatDuration(lastRunMs)}\n\n请选择继续方式。"
+                    "耗时 ${formatDuration(lastRunMs)}"
             )
             .setPositiveButton("从失败处继续") { _, _ -> startRun(index) }
             .setNeutralButton("从头开始") { _, _ -> startRun(0) }
@@ -447,10 +446,10 @@ class PackageActivity : AppCompatActivity() {
     /** continueOnError 导致部分步骤失败但流程已走完时的汇总；不提供“从失败处继续”。 */
     private fun showPartialSummary(success: Int, failed: Int, pending: Int) {
         MaterialAlertDialogBuilder(this)
-            .setTitle("执行完成（有失败）")
+            .setTitle("执行完成 · 有失败")
             .setMessage(
                 "成功 $success · 失败 $failed · 未执行 $pending\n" +
-                    "耗时 ${formatDuration(lastRunMs)}\n\n可从头重新执行全部步骤。"
+                    "耗时 ${formatDuration(lastRunMs)}\n\n可从头重新执行。"
             )
             .setPositiveButton("从头开始") { _, _ -> startRun(0) }
             .setNegativeButton("关闭", null)
@@ -468,20 +467,20 @@ class PackageActivity : AppCompatActivity() {
         run.text = when {
             running -> "执行中…"
             importing -> "导入中…"
-            imported == null -> "选择加密修复包"
+            imported == null -> "选择 .clpkg 文件"
             states.any { it.status == StepStatus.FAILED } -> "重新执行"
-            else -> "执行修复"
+            else -> "执行"
         }
         findViewById<Button>(R.id.packageBack).alpha = if (running) 0.5f else 1f
     }
 
     private fun handleBack() {
         if (running) {
-            toast("修复包执行中，不能停止")
+            toast("设备修复执行中，不能停止")
             return
         }
         if (importing) {
-            toast("正在导入修复包，请稍候")
+            toast("正在导入设备修复，请稍候")
             return
         }
         finish()

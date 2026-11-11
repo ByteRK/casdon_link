@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/deviceRoot"
     style="@style/Widget.CasdonLink.Screen.Scroll"
@@ -7,15 +8,10 @@
 
     <LinearLayout style="@style/Widget.CasdonLink.Screen.ScrollContent">
 
-        <TextView
-            style="@style/Text.CasdonLink.Eyebrow"
-            android:text="已连接设备" />
-
         <!-- 标题行：IP 占剩余宽度，右侧显示命中的机型规则；未知机型也在这里显示。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_sm"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -24,6 +20,8 @@
                 style="@style/Text.CasdonLink.ScreenTitle"
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:ellipsize="middle"
+                android:singleLine="true"
                 tools:text="172.16.241.28" />
 
             <TextView
@@ -39,7 +37,7 @@
             android:id="@+id/deviceState"
             style="@style/Text.CasdonLink.Status"
             android:layout_marginTop="6dp"
-            android:text="连接正常" />
+            android:text="已连接" />
 
         <!-- 授权摘要：命中机型且能读取授权文件时显示，例如「设备授权 · 已授权 · b893…44d1」。 -->
         <TextView
@@ -63,7 +61,7 @@
             <TextView
                 style="@style/Text.CasdonLink.MultilineCaption"
                 android:layout_marginTop="@dimen/space_sm"
-                android:text="设备可能已重启、更换 IP 或网络中断。可重试当前地址；若设备已换 IP，请返回首页重新连接。" />
+                android:text="设备可能已重启或网络中断。" />
 
             <Button
                 android:id="@+id/retryConnectionButton"
@@ -83,26 +81,136 @@
             style="@style/Widget.CasdonLink.Card"
             android:layout_marginTop="@dimen/space_xl">
 
-            <TextView
-                style="@style/Text.CasdonLink.Label"
-                android:text="设备状态" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/deviceStatus"
-                style="@style/Text.CasdonLink.MultilineBody"
-                android:layout_marginTop="10dp"
-                tools:text="rk3506-buildroot · Linux 6.1.118 armv7l\n运行时间 · 2 天 4 小时\nCPU · ARMv7 Processor rev 1 · 负载 0.42 0.38 0.31\n内存 · 总内存 94 MB · 可用内存 54 MB\n存储 · / 94 MB 已用 42%\n网络 · 10.0.0.93/24 · 14:0A:02:2C:18:BC" />
+                <TextView
+                    style="@style/Text.CasdonLink.SectionTitle"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:text="设备状态" />
 
-            <Button
-                android:id="@+id/refreshStatusButton"
-                style="@style/Widget.CasdonLink.Button.Small"
-                android:layout_marginTop="14dp"
-                android:text="刷新状态" />
+                <Button
+                    android:id="@+id/statusDetailButton"
+                    style="@style/Widget.CasdonLink.Button.Text"
+                    android:layout_marginEnd="@dimen/space_xs"
+                    android:text="详情" />
+
+                <Button
+                    android:id="@+id/refreshStatusButton"
+                    style="@style/Widget.CasdonLink.Button.Icon.Small"
+                    android:contentDescription="刷新状态"
+                    app:icon="@drawable/ic_refresh"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="@color/button_tonal_text" />
+            </LinearLayout>
+
+            <!-- 三条使用率环：内存 / 系统盘 / 数据盘；缺项在代码里隐藏。 -->
+            <LinearLayout
+                android:id="@+id/statusGauges"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_md"
+                android:gravity="center_horizontal"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <com.example.casdonlink.ui.StatusGaugeView
+                    android:id="@+id/memoryGauge"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <com.example.casdonlink.ui.StatusGaugeView
+                    android:id="@+id/rootStorageGauge"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <com.example.casdonlink.ui.StatusGaugeView
+                    android:id="@+id/dataStorageGauge"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+            </LinearLayout>
+
+            <!-- 运行时间 / CPU 负载：两个等宽状态块，只保留一眼能读懂的数值。 -->
+            <LinearLayout
+                android:id="@+id/statusFacts"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_md"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/uptimeFact"
+                    style="@style/Widget.CasdonLink.StatusFact"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <ImageView
+                        style="@style/Widget.CasdonLink.StatusFactIcon"
+                        android:src="@drawable/ic_status_uptime" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/Text.CasdonLink.Label"
+                            android:text="运行时间" />
+
+                        <TextView
+                            android:id="@+id/uptimeValue"
+                            style="@style/Text.CasdonLink.Body"
+                            android:layout_marginTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/loadFact"
+                    style="@style/Widget.CasdonLink.StatusFact"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/space_sm"
+                    android:layout_weight="1">
+
+                    <ImageView
+                        style="@style/Widget.CasdonLink.StatusFactIcon"
+                        android:src="@drawable/ic_status_load" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_sm"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/Text.CasdonLink.Label"
+                            android:text="CPU 负载" />
+
+                        <TextView
+                            android:id="@+id/loadValue"
+                            style="@style/Text.CasdonLink.Body"
+                            android:layout_marginTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/deviceUpdated"
                 style="@style/Text.CasdonLink.Caption"
-                android:layout_marginTop="@dimen/space_sm"
+                android:layout_marginTop="@dimen/space_md"
                 android:text="尚未刷新" />
         </LinearLayout>
 
@@ -123,7 +231,7 @@
                 android:id="@+id/licenseButton"
                 style="@style/Widget.CasdonLink.Button.Secondary"
                 android:layout_marginTop="@dimen/space_md"
-                android:text="补发授权码" />
+                android:text="授权码" />
 
             <Button
                 android:id="@+id/quickActionsButton"
@@ -161,12 +269,18 @@
                 android:text="文件管理" />
         </LinearLayout>
 
-        <!-- 修复包是默认唯一开放的功能，不随完整功能开关隐藏。 -->
+        <!-- 设备修复与重启是默认开放的操作，不随完整功能开关隐藏。 -->
         <Button
             android:id="@+id/importPackageButton"
             style="@style/Widget.CasdonLink.Button.Secondary"
             android:layout_marginTop="@dimen/space_md"
-            android:text="修复包" />
+            android:text="设备修复" />
+
+        <Button
+            android:id="@+id/rebootDeviceButton"
+            style="@style/Widget.CasdonLink.Button.Secondary"
+            android:layout_marginTop="@dimen/space_md"
+            android:text="重启设备" />
 
         <Button
             android:id="@+id/disconnectButton"

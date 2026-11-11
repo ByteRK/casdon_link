@@ -104,33 +104,33 @@ class SettingsActivity : AppCompatActivity() {
     /** 刷新所有计数/摘要；清空或修改后调用。 */
     private fun refresh() {
         val fontSize = terminalSettings.fontSize()
-        findViewById<TextView>(R.id.settingsFontValue).text = "当前 · ${fontSize.label}"
+        findViewById<TextView>(R.id.settingsFontValue).text = fontSize.label
 
         val historyCount = terminalHistory.load().size
         findViewById<TextView>(R.id.settingsHistoryValue).text =
-            if (historyCount == 0) "暂无命令历史" else "已保存 $historyCount 条命令（仅命令文本）"
+            if (historyCount == 0) "暂无命令历史" else "$historyCount 条命令"
         findViewById<Button>(R.id.settingsClearHistory).isEnabled = historyCount > 0
 
         val devices = deviceStore.getAll()
         findViewById<TextView>(R.id.settingsDeviceValue).text =
-            if (devices.isEmpty()) "暂无设备记录" else "已保存 ${devices.size} 条设备记录（含别名/地址/上次连接）"
+            if (devices.isEmpty()) "暂无设备记录" else "${devices.size} 条记录"
         findViewById<Button>(R.id.settingsClearDevices).isEnabled = devices.isNotEmpty()
 
         val passwordCount = devices.count { it.hasPassword }
         findViewById<TextView>(R.id.settingsPasswordValue).text =
-            if (passwordCount == 0) "没有已保存的密码" else "已保存 $passwordCount 个设备密码（Keystore 加密）"
+            if (passwordCount == 0) "没有已保存的密码" else "$passwordCount 个密码"
         findViewById<Button>(R.id.settingsClearPasswords).isEnabled = passwordCount > 0
 
         val cache = PackageCacheStore.info(this)
         findViewById<TextView>(R.id.settingsCacheValue).text =
-            if (cache.count == 0) "暂无修复包缓存"
-            else "${cache.count} 个已解压包 · ${formatByteSize(cache.bytes)}"
+            if (cache.count == 0) "暂无设备修复缓存"
+            else "${cache.count} 个缓存 · ${formatByteSize(cache.bytes)}"
         findViewById<Button>(R.id.settingsClearCache).isEnabled = cache.count > 0
 
         val recordCount = licenseHistory.count()
         findViewById<TextView>(R.id.settingsLicenseValue).text =
             if (recordCount == 0) "暂无授权记录"
-            else "已记录 $recordCount 条操作（列表中的授权码脱敏）"
+            else "$recordCount 条记录"
         findViewById<Button>(R.id.settingsViewLicense).isEnabled = recordCount > 0
         findViewById<Button>(R.id.settingsExportLicense).isEnabled = recordCount > 0
         findViewById<Button>(R.id.settingsClearLicense).isEnabled = recordCount > 0
@@ -154,7 +154,7 @@ class SettingsActivity : AppCompatActivity() {
                 terminalSettings.setFontSize(options[which])
                 dialog.dismiss()
                 refresh()
-                toast("终端字号已设为 ${options[which].label}")
+                toast("字号：${options[which].label}")
             }
             .setNegativeButton("取消", null)
             .show()
@@ -165,7 +165,7 @@ class SettingsActivity : AppCompatActivity() {
         if (count == 0) return
         confirm(
             "清空命令历史？",
-            "将删除本机保存的 $count 条命令历史，不影响设备。",
+            "删除 $count 条命令历史，不影响设备。",
             "清空"
         ) {
             terminalHistory.save(emptyList())
@@ -179,7 +179,7 @@ class SettingsActivity : AppCompatActivity() {
         if (count == 0) return
         confirm(
             "清空设备记录？",
-            "将删除 $count 条设备记录及其保存的密码，无法恢复。",
+            "删除 $count 条记录及密码，无法恢复。",
             "清空"
         ) {
             deviceStore.clear()
@@ -192,8 +192,8 @@ class SettingsActivity : AppCompatActivity() {
         val count = deviceStore.getAll().count { it.hasPassword }
         if (count == 0) return
         confirm(
-            "清除全部已保存密码？",
-            "将清除 $count 个设备的密码；设备记录、别名与地址保留。",
+            "清除已保存密码？",
+            "清除 $count 个设备的密码，记录与别名保留。",
             "清除"
         ) {
             deviceStore.clearPasswords()
@@ -206,13 +206,13 @@ class SettingsActivity : AppCompatActivity() {
         val info = PackageCacheStore.info(this)
         if (info.count == 0) return
         confirm(
-            "清理修复包缓存？",
-            "将删除 ${info.count} 个已解压修复包（${formatByteSize(info.bytes)}），不影响已下载的 .clpkg 文件。",
+            "清理设备修复缓存？",
+            "删除 ${info.count} 个缓存（${formatByteSize(info.bytes)}），不影响 .clpkg 文件。",
             "清理"
         ) {
             PackageCacheStore.clear(this)
             refresh()
-            toast("已清理修复包缓存")
+            toast("已清理设备修复缓存")
         }
     }
 
@@ -241,7 +241,7 @@ class SettingsActivity : AppCompatActivity() {
                 if (record.message.isNotBlank()) append('\n').append(record.message)
             }
         } + if (records.size > shown.size) {
-            "\n\n…（共 ${records.size} 条，仅显示最近 ${shown.size} 条）"
+            "\n\n…共 ${records.size} 条，仅显示最近 ${shown.size} 条"
         } else {
             ""
         }
@@ -249,13 +249,13 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun confirmExportLicenseRecords() {
         if (licenseHistory.count() == 0) {
-            toast("暂无授权记录可导出")
+            toast("暂无记录可导出")
             return
         }
         confirm(
-            "导出授权记录？",
-            "导出的 JSON 包含完整授权码等敏感信息，请按敏感文件保管，不要上传到公共位置或聊天群。",
-            "继续导出"
+            "导出记录？",
+            "JSON 含完整授权码，请妥善保管，勿上传公共渠道。",
+            "导出"
         ) {
             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
             exportLauncher.launch("CasdonLink_license_records_$stamp.json")
@@ -271,7 +271,7 @@ class SettingsActivity : AppCompatActivity() {
                         it.write(text.toByteArray(Charsets.UTF_8))
                     } ?: error("无法写入所选文件")
                 }
-                toast("授权记录已导出")
+                toast("已导出")
             } catch (error: Exception) {
                 toast("导出失败：${error.message ?: error.javaClass.simpleName}")
             }
@@ -283,7 +283,7 @@ class SettingsActivity : AppCompatActivity() {
         if (count == 0) return
         confirm(
             "清空授权记录？",
-            "将删除本机 $count 条授权记录，无法恢复；设备上的授权不受影响。",
+            "删除 $count 条记录，无法恢复；设备授权不受影响。",
             "清空"
         ) {
             licenseHistory.clear()
@@ -303,7 +303,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         confirm(
             "清空诊断日志？",
-            "仅清空本机内存中的诊断日志，不影响设备。",
+            "仅清空本机诊断日志。",
             "清空"
         ) {
             Diagnostics.clear()
@@ -339,7 +339,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("CasdonLink 版本信息", text))
-        toast("版本信息已复制")
+        toast("已复制")
     }
 
     private fun showPrivacy() {

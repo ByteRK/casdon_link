@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.view.View
@@ -15,7 +14,6 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -35,17 +33,15 @@ import com.example.casdonlink.profile.ProfileProbe
 import com.example.casdonlink.profile.ProfileStore
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * 独立的补发授权码页面：读取当前授权与 MAC，确认后向授权服务申请、写入设备、
- * 读回校验、sync 并重启，最后等待设备重新上线。所有结果写入本地授权记录，
- * 可在本页导出完整 JSON。
+ * 读回校验、sync 并重启，最后等待设备重新上线。结果写入本地授权记录，
+ * 记录统一在设置页查看/导出。
  */
 class LicenseActivity : AppCompatActivity() {
     private lateinit var profile: DeviceProfile
@@ -79,9 +75,15 @@ class LicenseActivity : AppCompatActivity() {
         R.id.licenseStepRead
     )
 
-    private val exportLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> if (uri != null) exportTo(uri) }
+    private val stepDotIds = intArrayOf(
+        R.id.licenseStepApplyDot,
+        R.id.licenseStepWriteDot,
+        R.id.licenseStepVerifyDot,
+        R.id.licenseStepSyncDot,
+        R.id.licenseStepRebootDot,
+        R.id.licenseStepOnlineDot,
+        R.id.licenseStepReadDot
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,11 +106,10 @@ class LicenseActivity : AppCompatActivity() {
         license = config
 
         findViewById<TextView>(R.id.licenseTitle).apply {
-            text = "补发授权码 · ${profile.name}"
+            text = "授权码"
             isSelected = true
         }
         renderDeviceHeader()
-        renderHistorySummary()
 
         findViewById<Button>(R.id.licenseBack).setOnClickListener { handleBack() }
         // 当前授权区域点击可重新读取：现场常见的“第一次读失败”可以直接重试。
@@ -121,10 +122,9 @@ class LicenseActivity : AppCompatActivity() {
         findViewById<Button>(R.id.licenseStart).setOnClickListener { confirmStart() }
         findViewById<Button>(R.id.licenseDone).setOnClickListener { finish() }
         findViewById<Button>(R.id.licenseAgain).setOnClickListener { prepareAnotherReissue() }
-        findViewById<Button>(R.id.licenseRecords).setOnClickListener { showLicenseRecords() }
         findViewById<Button>(R.id.licenseReveal).setOnClickListener { revealLicense() }
+        findViewById<Button>(R.id.licenseClear).setOnClickListener { confirmClearLicense() }
         findViewById<Button>(R.id.licenseCancelWait).setOnClickListener { requestCancelWait() }
-        findViewById<Button>(R.id.licenseExport).setOnClickListener { exportRecords() }
         findViewById<Button>(R.id.licenseCheckService).setOnClickListener { refreshServiceStatus(auto = false) }
         findViewById<CheckBox>(R.id.licenseConfirm).setOnCheckedChangeListener { _, _ -> updateStartButton() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -161,16 +161,15 @@ class LicenseActivity : AppCompatActivity() {
             append("\n网卡 · ").append(license.networkInterface)
             if (mac.isNotBlank()) append(" · ").append(mac)
             append("\n授权文件 · ").append(license.targetPath)
-            append("\n规则 · ").append(profile.id)
         }
     }
 
     /** 读取 MAC 与当前授权文件；两者都只读，不改设备。 */
     private fun loadDeviceState() {
-        setBusy(true, "正在读取设备信息…")
+        setBusy(true, "读取设备信息…")
         lifecycleScope.launch {
             try {
-                val active = DeviceSessionHolder.ensure() ?: error("设备连接已断开")
+                val active = DeviceSessionHolder.ensure() ?: error("连接已断开")
                 val address = active.execute(
                     "cat /sys/class/net/${ProfileProbe.shellQuote(license.networkInterface)}/address 2>/dev/null || true",
                     timeoutMs = 8_000
@@ -180,9 +179,9 @@ class LicenseActivity : AppCompatActivity() {
                 renderDeviceHeader()
                 readLicenseFromDevice(active)
                 val hint = when {
-                    mac.isBlank() -> "未读取到 ${license.networkInterface} 的 MAC，无法补发"
-                    completed -> "已从设备重新读取当前授权"
-                    else -> "信息读取完成，请核对后开始补发"
+                    mac.isBlank() -> "未读取到 MAC"
+                    completed -> "已重新读取授权"
+                    else -> "请核对后补发"
                 }
                 setBusy(false, hint)
             } catch (error: Exception) {
@@ -217,7 +216,7 @@ class LicenseActivity : AppCompatActivity() {
                 // 写后重启读不到可解析授权：明确提示，避免把“未授权/无法解析”当成补发前的旧状态。
                 val current = findViewById<TextView>(R.id.licenseCurrent)
                 current.text = current.text.toString() +
-                    "\n\n补发返回成功，但设备上未读取到可解析的授权。\n请点击此处重新读取，或重新进入本页核对。"
+                    "\n\n补发成功，但未读取到有效授权。请重新读取。"
                 false
             } else {
                 true
@@ -225,14 +224,14 @@ class LicenseActivity : AppCompatActivity() {
         } catch (error: Exception) {
             Diagnostics.log("补发成功后读取设备授权失败：${error.javaClass.simpleName}: ${error.message}")
             findViewById<TextView>(R.id.licenseCurrent).text =
-                "补发成功，但未能从设备读取当前授权。\n请点击此处重新读取。"
+                "补发成功，但未读取到授权。请重新读取。"
             false
         }
     }
 
     private fun renderCurrentLicense() {
         val text = when {
-            currentLicenseRaw.isBlank() -> "未授权（设备上不存在授权文件）"
+            currentLicenseRaw.isBlank() -> "未授权"
             currentLicense != null -> buildString {
                 append("已授权\n")
                 append("PID · ").append(currentLicense!!.pid).append('\n')
@@ -242,22 +241,25 @@ class LicenseActivity : AppCompatActivity() {
                 }
             }
             // 不展示原始内容：旧格式/规则不匹配时文件里可能含完整 License，界面不应泄露。
-            else -> "已存在授权文件，但无法按机型规则解析。\n请确认设备型号、PID 与授权文件格式是否匹配。"
+            else -> "授权文件无法解析，请核对机型与 PID。"
         }
         val warning = if (currentLicense != null && currentLicense!!.pid != license.pid) {
-            "\n\n警告：当前授权 PID 与规则不一致，请确认设备铭牌后再覆盖。"
+            "\n\nPID 与规则不一致，请核对铭牌。"
         } else {
             ""
         }
         findViewById<TextView>(R.id.licenseCurrent).text = text + warning
-        findViewById<Button>(R.id.licenseReveal).isVisible =
-            currentLicense?.license?.isNotEmpty() == true
+        val hasFile = currentLicenseRaw.isNotBlank()
+        findViewById<View>(R.id.licenseActions).isVisible = hasFile
+        findViewById<Button>(R.id.licenseReveal).isEnabled =
+            !busy && !running && currentLicense?.license?.isNotEmpty() == true
+        findViewById<Button>(R.id.licenseClear).isEnabled = !busy && !running && hasFile
     }
 
     private fun confirmStart() {
         if (running || busy) return
         if (!findViewById<CheckBox>(R.id.licenseConfirm).isChecked) {
-            toast("请先勾选「已核对设备铭牌与 PID 一致」")
+            toast("请先勾选「已核对铭牌与 PID」")
             return
         }
         if (mac.isBlank()) {
@@ -270,9 +272,8 @@ class LicenseActivity : AppCompatActivity() {
             MaterialAlertDialogBuilder(this)
                 .setTitle("PID 不一致")
                 .setMessage(
-                    "设备当前授权的 PID 为 ${parsed.pid}，与规则 PID ${license.pid} 不一致。\n\n" +
-                        "继续补发会覆盖现有授权，可能影响设备使用。请先核对设备铭牌；" +
-                        "若确认设备与规则匹配，可仍然继续。"
+                    "设备 PID ${parsed.pid} 与规则 PID ${license.pid} 不一致。\n\n" +
+                        "继续会覆盖现有授权，请核对铭牌。"
                 )
                 .setNegativeButton("取消", null)
                 .setPositiveButton("仍然继续") { _, _ -> showStartConfirm() }
@@ -296,14 +297,89 @@ class LicenseActivity : AppCompatActivity() {
             append("目标文件：").append(license.targetPath).append('\n')
             append("当前授权：").append(current).append('\n')
             append("设备重启：是\n\n")
-            append("授权写入后设备会立即重启；若设备更换 IP，将无法自动找回。")
+            append("写入后设备将重启；换 IP 后无法自动找回。")
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle("确认补发授权码？")
+            .setTitle("确认补发？")
             .setMessage(message)
             .setNegativeButton("取消", null)
             .setPositiveButton("开始补发") { _, _ -> startFlow(null) }
             .show()
+    }
+
+    /** 清除授权码：删除设备上的授权文件并重启，上线后自动刷新「当前授权」。 */
+    private fun confirmClearLicense() {
+        if (running || busy || currentLicenseRaw.isBlank()) return
+        MaterialAlertDialogBuilder(this)
+            .setTitle("清除授权码？")
+            .setMessage("将删除设备上的授权文件并重启。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("清除") { _, _ -> clearLicense() }
+            .show()
+    }
+
+    private fun clearLicense() {
+        if (running || busy) return
+        running = true
+        completed = false
+        pendingAuthorization = null
+        currentRecordId = null
+        resetSteps()
+        findViewById<TextView>(R.id.licenseResult).isVisible = false
+        findViewById<Button>(R.id.licenseDone).isVisible = false
+        findViewById<View>(R.id.licenseSuccessActions).isVisible = false
+        findViewById<Button>(R.id.licenseStart).isVisible = true
+        setBusy(true, "正在清除授权…")
+
+        lifecycleScope.launch {
+            var rebootPending = false
+            try {
+                val active = DeviceSessionHolder.ensure() ?: error("连接已断开")
+                val previousBootId = runCatching {
+                    active.execute("cat /proc/sys/kernel/random/boot_id", timeoutMs = 3_000).trim()
+                }.getOrNull()
+                rebootBaselineId = previousBootId
+
+                setStatus("正在删除授权文件…")
+                active.execute(
+                    "rm -f ${ProfileProbe.shellQuote(license.targetPath)} && sync",
+                    timeoutMs = 10_000
+                )
+                currentLicenseRaw = ""
+                currentLicense = null
+                findViewById<TextView>(R.id.licenseReadAt).text = "清除于 ${timeText()}"
+                renderCurrentLicense()
+
+                setStatus("设备重启中，等待上线…")
+                DeviceSessionHolder.beginReboot()
+                rebootPending = true
+                active.reboot()
+                val restored = DeviceSessionHolder.reconnectAfterReboot(90_000, previousBootId)
+                if (restored == null) {
+                    setStatus("设备未上线")
+                    toast("设备未上线，请稍后重新连接")
+                    return@launch
+                }
+
+                setStatus("设备已上线，读取授权…")
+                val readOk = runCatching { readLicenseFromDevice(restored) }.isSuccess
+                if (readOk) {
+                    setStatus("授权已清除")
+                    toast("授权已清除")
+                } else {
+                    setStatus("授权已清除，读取失败")
+                    toast("已清除，请重新读取")
+                }
+            } catch (error: Exception) {
+                Diagnostics.log("清除授权失败：${error.javaClass.simpleName}: ${error.message}")
+                setStatus("清除失败：${error.message ?: error.javaClass.simpleName}")
+                toast("清除失败")
+            } finally {
+                if (rebootPending) DeviceSessionHolder.endReboot()
+                running = false
+                setBusy(false)
+            }
+        }
     }
 
     /**
@@ -326,7 +402,7 @@ class LicenseActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var authorized = retry
             try {
-                val active = DeviceSessionHolder.ensure() ?: error("设备连接已断开")
+                val active = DeviceSessionHolder.ensure() ?: error("连接已断开")
                 if (authorized == null) {
                     authorized = AuthClient().authorize(license.pid, mac)
                     pendingAuthorization = authorized
@@ -392,29 +468,29 @@ class LicenseActivity : AppCompatActivity() {
                     isEnabled = true
                     text = "取消等待"
                 }
-                setStatus("设备正在重启，等待重新上线（最长 90 秒，可取消等待）…")
+                setStatus("设备重启中，等待上线（最长 90 秒）…")
                 val restored = DeviceSessionHolder.reconnectAfterReboot(90_000, previousBootId) { cancelRebootWait }
                 waitingReboot = false
                 findViewById<Button>(R.id.licenseCancelWait).isVisible = false
                 if (restored == null) {
                     if (cancelRebootWait) {
                         history.update(record.id) {
-                            it.copy(status = LicenseStatus.FAILED, message = "已取消等待设备重新上线，授权文件可能已写入")
+                            it.copy(status = LicenseStatus.FAILED, message = "已取消等待，授权可能已写入")
                         }
                         showWaitCancelled()
                     } else {
                         history.update(record.id) {
-                            it.copy(status = LicenseStatus.FAILED, message = "设备未在 90 秒内重新上线，授权文件可能已写入")
+                            it.copy(status = LicenseStatus.FAILED, message = "设备未在 90 秒内上线，授权可能已写入")
                         }
                         showRebootFailure()
                     }
                 } else {
                     history.update(record.id) {
-                        it.copy(status = LicenseStatus.SUCCESS, message = "授权写入成功，设备已重新上线")
+                        it.copy(status = LicenseStatus.SUCCESS, message = "授权已写入，设备已上线")
                     }
                     // 设备重新连接后自动读取设备内部的授权；成功结果不输出服务端返回的授权码。
                     setStep(6)
-                    setStatus("设备已重新上线，正在读取当前授权…")
+                    setStatus("设备已上线，读取授权…")
                     val readOk = refreshLicenseAfterReconnect(restored)
                     showSuccess(allocated, readOk)
                 }
@@ -428,7 +504,6 @@ class LicenseActivity : AppCompatActivity() {
             } finally {
                 running = false
                 setBusy(false)
-                renderHistorySummary()
             }
         }
     }
@@ -454,7 +529,7 @@ class LicenseActivity : AppCompatActivity() {
     private fun showSuccess(auth: Authorization, licenseRead: Boolean) {
         completed = true
         markStepsDone()
-        setStatus(if (licenseRead) "补发成功" else "补发成功，但当前授权读取异常")
+        setStatus(if (licenseRead) "补发成功" else "补发成功，但读取授权失败")
         findViewById<ProgressBar>(R.id.licenseProgress).isVisible = false
         findViewById<Button>(R.id.licenseStart).isVisible = false
         findViewById<Button>(R.id.licenseDone).isVisible = true
@@ -463,11 +538,11 @@ class LicenseActivity : AppCompatActivity() {
             isVisible = true
             text = buildString {
                 if (licenseRead) {
-                    append("设备已重新上线，已从设备读取当前授权。")
+                    append("设备已上线，已读取授权。")
                 } else {
-                    append("设备已重新上线，但未能从设备读取到有效授权。\n请点击上方「当前授权」重新读取。")
+                    append("设备已上线，但未读取到有效授权。请重新读取。")
                 }
-                if (auth.mode == "reused") append("\n服务端返回已有授权，未重复分配。")
+                if (auth.mode == "reused") append("\n服务端已有授权，未重复分配。")
             }
         }
         updateStartButton()
@@ -502,14 +577,14 @@ class LicenseActivity : AppCompatActivity() {
 
     private fun showRebootFailure() {
         markStepFailed()
-        setStatus("授权文件已写入，但设备未重新上线")
+        setStatus("授权已写入，设备未上线")
         findViewById<TextView>(R.id.licenseResult).apply {
             isVisible = true
-            text = "授权文件已写入并同步，但设备在 90 秒内没有重新上线。\n可能已更换 IP，或重启尚未完成。请重试连接或返回后手动重新连接。"
+            text = "授权已写入，设备 90 秒内未上线。可能已换 IP，请重试连接。"
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle("设备未重新上线")
-            .setMessage("授权可能已经写入成功。可重试连接当前地址；若设备已更换 IP，请返回首页重新连接。")
+            .setTitle("设备未上线")
+            .setMessage("授权可能已写入。可重试，或返回首页重新连接。")
             .setNegativeButton("返回设备页") { _, _ -> finish() }
             .setPositiveButton("重试连接") { _, _ -> retryReconnect() }
             .setCancelable(false)
@@ -518,15 +593,14 @@ class LicenseActivity : AppCompatActivity() {
 
     /** 用户在等待期间主动取消：授权文件可能已写入，明确提示并允许返回设备页。 */
     private fun showWaitCancelled() {
-        setStatus("已取消等待设备重新上线")
+        setStatus("已取消等待")
         findViewById<TextView>(R.id.licenseResult).apply {
             isVisible = true
-            text = "已停止等待设备重新上线。授权文件可能已写入成功，设备可能仍在重启。\n" +
-                "可稍后返回首页重新连接核对。"
+            text = "已停止等待，授权可能已写入。可稍后重新连接核对。"
         }
         MaterialAlertDialogBuilder(this)
             .setTitle("已取消等待")
-            .setMessage("授权文件可能已写入成功，但设备尚未确认上线。\n可留在本页重新读取，或返回设备页稍后重连。")
+            .setMessage("授权可能已写入，设备尚未上线。可重新读取或稍后重连。")
             .setNegativeButton("留在此页", null)
             .setPositiveButton("返回设备页") { _, _ -> finish() }
             .setCancelable(false)
@@ -534,7 +608,7 @@ class LicenseActivity : AppCompatActivity() {
     }
 
     private fun retryReconnect() {
-        setBusy(true, "等待设备重新上线…")
+        setBusy(true, "等待设备上线…")
         setStep(5)
         lifecycleScope.launch {
             val restored = DeviceSessionHolder.reconnectAfterReboot(60_000, rebootBaselineId)
@@ -546,20 +620,19 @@ class LicenseActivity : AppCompatActivity() {
             } else {
                 pendingAuthorization?.let { auth ->
                     currentRecordId?.let { id ->
-                        history.update(id) { it.copy(status = LicenseStatus.SUCCESS, message = "授权写入成功，设备已重新上线") }
+                        history.update(id) { it.copy(status = LicenseStatus.SUCCESS, message = "授权已写入，设备已上线") }
                     }
                     setStep(6)
-                    setStatus("设备已重新上线，正在读取当前授权…")
+                    setStatus("设备已上线，读取授权…")
                     val readOk = refreshLicenseAfterReconnect(restored)
                     setBusy(false)
                     showSuccess(auth, readOk)
                 } ?: run {
                     setBusy(false)
-                    toast("设备已重新上线")
+                    toast("设备已上线")
                     finish()
                 }
             }
-            renderHistorySummary()
         }
     }
 
@@ -573,12 +646,13 @@ class LicenseActivity : AppCompatActivity() {
         busy = value
         findViewById<ProgressBar>(R.id.licenseProgress).isVisible = value
         findViewById<CheckBox>(R.id.licenseConfirm).isEnabled = !value
-        findViewById<Button>(R.id.licenseExport).isEnabled = !value
         findViewById<Button>(R.id.licenseCheckService).isEnabled = !value
         findViewById<Button>(R.id.licenseReload).isEnabled = !value
-        findViewById<Button>(R.id.licenseReveal).isEnabled = !value
+        findViewById<Button>(R.id.licenseReveal).isEnabled =
+            !value && currentLicense?.license?.isNotEmpty() == true
+        findViewById<Button>(R.id.licenseClear).isEnabled =
+            !value && currentLicenseRaw.isNotBlank()
         findViewById<Button>(R.id.licenseAgain).isEnabled = !value
-        findViewById<Button>(R.id.licenseRecords).isEnabled = !value
         findViewById<TextView>(R.id.licenseToolbarStatus).text = if (value) "执行中…" else ""
         if (status != null) setStatus(status)
         updateStartButton()
@@ -608,6 +682,7 @@ class LicenseActivity : AppCompatActivity() {
     private fun renderSteps(index: Int, failed: Boolean, done: Boolean) {
         stepIds.forEachIndexed { position, id ->
             val view = findViewById<TextView>(id)
+            val completed = done || position < index
             val color = when {
                 done -> R.color.text_primary
                 failed && position == index -> R.color.danger
@@ -617,6 +692,16 @@ class LicenseActivity : AppCompatActivity() {
             }
             view.setTextColor(getColor(color))
             view.setTypeface(null, if (!done && position == index) Typeface.BOLD else Typeface.NORMAL)
+
+            // 圆点同步状态：已完成 teal、当前主色、失败红色、待执行灰色。
+            findViewById<View>(stepDotIds[position]).setBackgroundResource(
+                when {
+                    completed -> R.drawable.dot_step_success
+                    failed && position == index -> R.drawable.dot_step_failed
+                    position == index -> R.drawable.dot_step_running
+                    else -> R.drawable.dot_step_pending
+                }
+            )
         }
     }
 
@@ -634,15 +719,6 @@ class LicenseActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.licenseStatus).text = text
     }
 
-    private fun renderHistorySummary() {
-        val count = history.count()
-        findViewById<TextView>(R.id.licenseHistorySummary).text = if (count == 0) {
-            "本机尚未记录授权操作。"
-        } else {
-            "本机已记录 $count 条授权操作。导出文件包含完整字段与授权码，请按敏感文件保管。"
-        }
-    }
-
     /**
      * 检测授权平台 HTTP 可达性，不改设备、不申请授权。
      * 进入页面时自动执行一次；「重新检测」按钮可随时手动重试。
@@ -650,7 +726,7 @@ class LicenseActivity : AppCompatActivity() {
     private fun refreshServiceStatus(auto: Boolean) {
         val status = findViewById<TextView>(R.id.licenseServiceStatus)
         status.setTextColor(getColor(R.color.text_secondary))
-        status.text = "授权服务 · 检测中…"
+        status.text = "检测中…"
         lifecycleScope.launch {
             try {
                 val message = AuthClient().checkReachable()
@@ -661,29 +737,10 @@ class LicenseActivity : AppCompatActivity() {
             } catch (error: Exception) {
                 val message = error.message ?: error.javaClass.simpleName
                 status.setTextColor(getColor(R.color.danger))
-                status.text = "授权服务 · 不可用：$message（${timeText()}）"
+                status.text = "不可用：$message（${timeText()}）"
                 if (!auto) toast("授权服务不可用：$message")
             }
         }
-    }
-
-    /** 导出前明确提示 JSON 含完整授权码，避免误把敏感文件发到公共位置。 */
-    private fun exportRecords() {
-        if (history.count() == 0) {
-            toast("暂无授权记录可导出")
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("导出授权记录？")
-            .setMessage("导出的 JSON 包含完整授权码等敏感信息，请按敏感文件保管，不要上传到公共位置或聊天群。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("继续导出") { _, _ -> launchExport() }
-            .show()
-    }
-
-    private fun launchExport() {
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        exportLauncher.launch("CasdonLink_license_records_$stamp.json")
     }
 
     /** 成功页「再次补发」：清理本次记录状态并重新读取设备，不重复使用旧记录。 */
@@ -704,49 +761,13 @@ class LicenseActivity : AppCompatActivity() {
         loadDeviceState()
     }
 
-    /**
-     * 查看最近授权记录：列表只展示脱敏后的授权码与状态，完整数据仍通过导出获取。
-     * 这是 LIC-01 记录中心落地前的轻量入口。
-     */
-    private fun showLicenseRecords() {
-        val records = history.all()
-        if (records.isEmpty()) {
-            toast("暂无授权记录")
-            return
-        }
-        val shown = records.take(RECORDS_DIALOG_LIMIT)
-        val text = shown.joinToString("\n\n") { record ->
-            buildString {
-                append(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(record.createdAt)))
-                append(" · ").append(record.status.name)
-                append("\n").append(record.profileName)
-                append(" · ").append(record.host).append(':').append(record.port)
-                append("\nPID ").append(record.pid)
-                if (record.did.isNotBlank()) append(" · DID ").append(record.did)
-                if (record.license.isNotEmpty()) append("\n授权码 ").append(LicenseText.mask(record.license))
-                if (record.message.isNotBlank()) append("\n").append(record.message)
-            }
-        } + if (records.size > shown.size) "\n\n…（共 ${records.size} 条，仅显示最近 ${shown.size} 条）" else ""
-        val view = layoutInflater.inflate(R.layout.dialog_text, null)
-        view.findViewById<TextView>(R.id.dialogText).text = text
-        MaterialAlertDialogBuilder(this)
-            .setTitle("授权记录")
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .setPositiveButton("复制") { _, _ ->
-                copyToClipboard("CasdonLink 授权记录", text)
-                toast("已复制到剪贴板")
-            }
-            .show()
-    }
-
     /** 完整授权码默认脱敏；展示前二次确认，复制同样属于敏感操作。 */
     private fun revealLicense() {
         val parsed = currentLicense ?: return
         if (parsed.license.isEmpty()) return
         MaterialAlertDialogBuilder(this)
-            .setTitle("显示完整授权码？")
-            .setMessage("完整授权码属于敏感信息，仅用于与服务端核对。\n请勿截图、拍照或发送到公共渠道。")
+            .setTitle("显示授权码？")
+            .setMessage("授权码属敏感信息，请勿截图或外传。")
             .setNegativeButton("取消", null)
             .setPositiveButton("显示") { _, _ -> showLicenseCode(parsed.license) }
             .show()
@@ -756,7 +777,7 @@ class LicenseActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_text, null)
         view.findViewById<TextView>(R.id.dialogText).text = code
         MaterialAlertDialogBuilder(this)
-            .setTitle("完整授权码")
+            .setTitle("授权码")
             .setView(view)
             .setNegativeButton("关闭", null)
             .setPositiveButton("复制") { _, _ ->
@@ -773,7 +794,7 @@ class LicenseActivity : AppCompatActivity() {
             append(Diagnostics.dump())
         }
         copyToClipboard("CasdonLink 授权诊断", body)
-        toast("诊断信息已复制")
+        toast("已复制")
     }
 
     private fun copyToClipboard(label: String, text: String) {
@@ -783,34 +804,19 @@ class LicenseActivity : AppCompatActivity() {
 
     private fun timeText(): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
 
-    private fun exportTo(uri: Uri) {
-        lifecycleScope.launch {
-            try {
-                val text = withContext(Dispatchers.IO) { history.exportJson() }
-                withContext(Dispatchers.IO) {
-                    contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                        ?: error("无法写入所选文件")
-                }
-                toast("授权记录已导出")
-            } catch (error: Exception) {
-                toast("导出失败：${error.message ?: error.javaClass.simpleName}")
-            }
-        }
-    }
-
     private fun handleBack() {
         if (running) {
             if (waitingReboot) {
                 // 等待重启期间允许停止等待并离开；设备可能仍在重启，文案要说明这一点。
                 MaterialAlertDialogBuilder(this)
                     .setTitle("停止等待并返回？")
-                    .setMessage("设备可能仍在重启，此时离开无法确认是否已重新上线。\n授权文件可能已经写入，可稍后重新连接核对。")
+                    .setMessage("设备可能仍在重启。授权可能已写入，可稍后重新连接核对。")
                     .setNegativeButton("继续等待", null)
                     .setPositiveButton("停止等待") { _, _ -> requestCancelWait() }
                     .show()
                 return
             }
-            toast("操作进行中，请等待完成")
+            toast("请等待操作完成")
             return
         }
         finish()
@@ -830,8 +836,5 @@ class LicenseActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PROFILE_ID = "profile_id"
-
-        /** 授权记录弹窗最多展示的条数；完整记录通过导出获取。 */
-        private const val RECORDS_DIALOG_LIMIT = 30
     }
 }

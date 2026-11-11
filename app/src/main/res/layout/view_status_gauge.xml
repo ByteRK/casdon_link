@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设备状态环形指标：76dp 圆环 + 居中百分比 + 标签/容量。由 StatusGaugeView 绑定。 -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <FrameLayout
+        android:layout_width="80dp"
+        android:layout_height="80dp">
+
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/gaugeProgress"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:indeterminate="false"
+            android:max="100"
+            android:progress="0"
+            app:indicatorColor="@color/primary"
+            app:indicatorSize="76dp"
+            app:trackColor="@color/surface_container_highest"
+            app:trackThickness="8dp" />
+
+        <TextView
+            android:id="@+id/gaugeValue"
+            style="@style/Text.CasdonLink.GaugeValue"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/gaugeLabel"
+        style="@style/Text.CasdonLink.Label"
+        android:layout_marginTop="@dimen/space_sm" />
+
+    <TextView
+        android:id="@+id/gaugeDetail"
+        style="@style/Text.CasdonLink.Caption"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1" />
+
+</merge>

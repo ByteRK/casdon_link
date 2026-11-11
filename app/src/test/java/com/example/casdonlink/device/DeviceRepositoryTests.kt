@@ -37,6 +37,27 @@ class DeviceRepositoryTests {
     }
 
     @Test
+    fun buildsStructuredStatusForGauges() {
+        val info = parseDeviceInfo(sample)
+        val memory = info.memoryUsage
+        assertEquals(94L, memory?.totalMb)
+        assertEquals(54L, memory?.availableMb)
+        assertEquals(40L, memory?.usedMb)
+        assertEquals(42, memory?.usedPercent)
+
+        assertEquals(2, info.storageUsage.size)
+        assertEquals("/", info.storageUsage[0].mountPoint)
+        assertEquals("94.0M", info.storageUsage[0].sizeText)
+        assertEquals("39.2M", info.storageUsage[0].usedText)
+        assertEquals(42, info.storageUsage[0].usedPercent)
+        assertEquals("/userdata", info.storageUsage[1].mountPoint)
+        assertEquals(43, info.storageUsage[1].usedPercent)
+
+        assertEquals("10.0.0.93/24", info.networkDetail?.ip)
+        assertEquals("14:0A:02:2C:18:BC", info.networkDetail?.mac)
+    }
+
+    @Test
     fun missingFieldsFallBackInsteadOfCrashing() {
         val info = parseDeviceInfo("@UNAME Linux 4.19 armv7l\n@END")
         assertEquals("Linux 4.19 armv7l", info.system) // 无 @HOST 时退回系统信息
@@ -47,6 +68,9 @@ class DeviceRepositoryTests {
         assertEquals("网络信息不可用", info.network)
         assertEquals("", info.cpu)
         assertEquals("", info.load)
+        assertNull(info.memoryUsage)
+        assertTrue(info.storageUsage.isEmpty())
+        assertNull(info.networkDetail)
     }
 
     @Test
@@ -64,6 +88,16 @@ class DeviceRepositoryTests {
     fun malformedDfLineIsIgnored() {
         assertNull(parseDfLine("Filesystem Size Used Available Use% Mounted on"))
         assertNull(parseDfLine(""))
+        assertNull(parseDfUsage("Filesystem Size Used Available Use% Mounted on"))
+    }
+
+    @Test
+    fun memoryUsageNeedsBothTotalAndAvailable() {
+        assertNull(parseMemoryUsage("MemTotal: 96264 kB"))
+        assertEquals(
+            42,
+            parseMemoryUsage("MemTotal: 96264 kB MemAvailable: 55304 kB")?.usedPercent
+        )
     }
 
     @Test

@@ -7,8 +7,8 @@
 
         <Button
             android:id="@+id/packageBack"
-            style="@style/Widget.CasdonLink.Button.Icon"
-            android:text="‹" />
+            style="@style/Widget.CasdonLink.Button.Icon.Back"
+            android:contentDescription="返回设备页" />
 
         <TextView
             android:id="@+id/packageTitle"
@@ -16,7 +16,7 @@
             android:layout_width="0dp"
             android:layout_marginStart="@dimen/space_md"
             android:layout_weight="1"
-            android:text="修复包" />
+            android:text="设备修复" />
 
         <TextView
             android:id="@+id/packageProgress"
@@ -28,7 +28,7 @@
         style="@style/Text.CasdonLink.Label"
         android:layout_width="match_parent"
         android:layout_marginTop="@dimen/space_lg"
-        android:text="请选择官方签名的 .clpkg 加密修复包；导入时无需输入密码。" />
+        android:text="选择官方签名 .clpkg 文件。" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/stepList"
@@ -39,6 +39,6 @@
         android:id="@+id/runPackage"
         style="@style/Widget.CasdonLink.Button.Primary"
         android:layout_marginTop="@dimen/space_md"
-        android:text="选择加密修复包" />
+        android:text="选择 .clpkg 文件" />
 
 </LinearLayout>

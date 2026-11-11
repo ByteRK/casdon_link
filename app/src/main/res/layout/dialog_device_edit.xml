@@ -12,7 +12,7 @@
     <EditText
         android:id="@+id/editName"
         style="@style/Widget.CasdonLink.EditText"
-        android:hint="设备别名（可选）"
+        android:hint="设备别名"
         android:inputType="text"
         android:maxLength="40" />
 
@@ -48,7 +48,7 @@
         android:id="@+id/editPassword"
         style="@style/Widget.CasdonLink.EditText"
         android:layout_marginTop="@dimen/space_md"
-        android:hint="密码（留空不修改）"
+        android:hint="密码（留空不改）"
         android:inputType="textPassword" />
 
     <CheckBox
@@ -56,8 +56,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/space_md"
-        android:buttonTint="@color/primary"
-        android:text="清除已保存的密码"
+        android:text="清除已保存密码"
         android:textColor="@color/text_primary"
         android:textSize="@dimen/text_body"
         android:visibility="gone" />
