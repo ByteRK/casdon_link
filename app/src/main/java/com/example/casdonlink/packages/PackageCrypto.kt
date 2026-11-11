@@ -1,70 +1,197 @@
 package com.example.casdonlink.packages
 
+import android.content.Context
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.GeneralSecurityException
-import javax.crypto.AEADBadTagException
+import java.security.KeyFactory
+import java.security.MessageDigest
+import java.security.PublicKey
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
-import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** 加密修复包解密失败：密码错误、文件损坏或不是 `.clpkg`。 */
+/** 修复包验签/解密失败：签名不匹配、密钥未知、内容损坏或不是 `.clpkg`。 */
 class PackageDecryptException(message: String) : Exception(message)
 
 /**
- * 加密修复包 `.clpkg` 的容器格式与解密实现。
+ * 官方签名公钥与包级密钥。
+ *
+ * 公钥来自 APK assets 中的 `package-signing-public.pem`；私钥只存在于官方打包环境。
+ * `keyId` 取公钥 DER 的 SHA-256 前 4 字节，用于识别签名密钥。
+ *
+ * 载荷加密使用随机 DEK + 由公钥派生的 KEK。公钥不是秘密，因此载荷加密只能阻止
+ * 随手解压，不构成对逆向 APK 的机密性；真正的“只允许官方包”边界是 RSA 签名。
+ */
+class PackageVerifier private constructor(
+    private val publicKey: PublicKey,
+    val keyId: Int,
+    private val kek: ByteArray
+) {
+    fun verify(signed: ByteArray, signature: ByteArray): Boolean = runCatching {
+        val verifier = Signature.getInstance("SHA256withRSA")
+        verifier.initVerify(publicKey)
+        verifier.update(signed)
+        verifier.verify(signature)
+    }.getOrDefault(false)
+
+    fun unwrapDek(wrapped: ByteArray, nonce: ByteArray, aad: ByteArray): ByteArray {
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(kek, "AES"),
+                GCMParameterSpec(TAG_BITS, nonce)
+            )
+            cipher.updateAAD(aad)
+            cipher.doFinal(wrapped)
+        } catch (error: Exception) {
+            throw PackageDecryptException("修复包密钥解包失败")
+        }
+    }
+
+    companion object {
+        private const val ASSET = "package-signing-public.pem"
+        private const val KEK_LABEL = "CASDON-PKG-V2-KEK"
+        private const val TAG_BITS = 128
+
+        fun fromAsset(context: Context): PackageVerifier =
+            context.assets.open(ASSET).use { fromPem(it.readBytes()) }
+
+        /** 解析 PEM 公钥；单元测试与 assets 读取共用。 */
+        fun fromPem(pem: ByteArray): PackageVerifier {
+            val base64 = String(pem, Charsets.US_ASCII)
+                .lineSequence()
+                .filterNot { it.startsWith("-----") }
+                .joinToString("")
+                .filterNot(Char::isWhitespace)
+            val der = try {
+                decodeBase64(base64)
+            } catch (error: Exception) {
+                throw PackageDecryptException("内置签名公钥格式无效")
+            }
+            val publicKey = try {
+                KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(der))
+            } catch (error: Exception) {
+                throw PackageDecryptException("内置签名公钥无法解析")
+            }
+            val digest = MessageDigest.getInstance("SHA-256").digest(der)
+            val keyId = ByteBuffer.wrap(digest, 0, 4).order(ByteOrder.BIG_ENDIAN).int
+            val kek = MessageDigest.getInstance("SHA-256")
+                .digest(KEK_LABEL.toByteArray(Charsets.US_ASCII) + der)
+            return PackageVerifier(publicKey, keyId, kek)
+        }
+
+        /** 纯 Kotlin Base64 解码：android.util.Base64 在本地 JVM 单元测试中不可用。 */
+        private fun decodeBase64(text: String): ByteArray {
+            val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+            val map = IntArray(128) { -1 }
+            alphabet.forEachIndexed { index, char -> map[char.code] = index }
+            val output = ByteArrayOutputStream()
+            var buffer = 0
+            var bits = 0
+            for (char in text) {
+                if (char == '=') break
+                if (char.code >= map.size) continue
+                val value = map[char.code]
+                if (value < 0) continue
+                buffer = (buffer shl 6) or value
+                bits += 6
+                if (bits >= 8) {
+                    bits -= 8
+                    output.write((buffer shr bits) and 0xFF)
+                }
+            }
+            return output.toByteArray()
+        }
+    }
+}
+
+/**
+ * `.clpkg` v2 容器：官方签名 + 免密解密。
  *
  * 布局（全部大端）：
  * ```
- * 0   5   magic "CLPKG"
- * 5   1   container version = 1
- * 6   4   PBKDF2 迭代次数
- * 10  16  salt
- * 26  12  GCM nonce
- * 38  N   AES-256-GCM 密文
- * 38+N 16 GCM tag
+ * 0    6    magic "CLPKG2"
+ * 6    1    container version = 2
+ * 7    4    sigKeyId（公钥 DER SHA-256 前 4 字节）
+ * 11   12   DEK 包裹 nonce
+ * 23   48   wrappedDek（AES-256-GCM(KEK, DEK) + tag）
+ * 71   12   载荷 nonce
+ * 83   32   载荷密文 SHA-256
+ * 115  384  RSA-3072 签名（覆盖 0..114）
+ * 499  N    载荷密文（AES-256-GCM(DEK, ZIP)）
  * ```
- * 明文是现有修复包 ZIP；AAD 覆盖整个 38 字节头部，防止篡改 KDF 参数。
- * 密码不落盘；KDF 使用 PBKDF2-HMAC-SHA256，输出 32 字节密钥。
- *
- * 注意：密码以 UTF-8 原样参与 KDF，打包脚本必须使用同样编码。
+ * 验签在解密之前；签名有效但内容 hash/GCM 失败时仍拒绝。
  */
 object PackageCrypto {
-    /** 新打包默认迭代次数；解密时按头部记录执行，兼容后续调整。 */
-    const val ITERATIONS = 210_000
-
-    private val MAGIC = "CLPKG".toByteArray(Charsets.US_ASCII)
-    private const val VERSION = 1
-    private const val SALT_BYTES = 16
-    private const val NONCE_BYTES = 12
+    private val MAGIC = "CLPKG2".toByteArray(Charsets.US_ASCII)
+    private const val VERSION = 2
+    private const val HEADER_BYTES = 499
+    private const val SIGNED_BYTES = 115
+    private const val KEY_ID_OFFSET = 7
+    private const val DEK_NONCE_OFFSET = 11
+    private const val WRAPPED_DEK_OFFSET = 23
+    private const val PAYLOAD_NONCE_OFFSET = 71
+    private const val PAYLOAD_SHA_OFFSET = 83
+    private const val PAYLOAD_SHA_BYTES = 32
+    private const val WRAP_AAD_BYTES = 23
+    private const val PAYLOAD_AAD_BYTES = 83
     private const val TAG_BITS = 128
-    private const val HEADER_BYTES = 5 + 1 + 4 + SALT_BYTES + NONCE_BYTES
-    private const val MIN_ITERATIONS = 100_000
-    private const val MAX_ITERATIONS = 2_000_000
-    private const val MAX_ENCRYPTED_BYTES = 256L * 1024 * 1024
     private const val BUFFER_BYTES = 64 * 1024
+    private const val MAX_CIPHERTEXT_BYTES = 256L * 1024 * 1024
 
     /**
-     * 把加密包解密为临时 ZIP。调用方负责删除 [output]。
-     *
-     * GCM 的 tag 在 `doFinal` 才校验，因此中途写出的明文不可信；任何失败都会删除
-     * [output]，避免把未认证内容留给后续导入流程。
+     * 验签并解密为临时 ZIP。调用方负责删除 [output]。
+     * 任何失败都会删除 [output]，避免把未通过验签的内容交给后续导入。
      */
-    fun decryptToZip(input: InputStream, password: CharArray, output: File) {
+    fun decryptToZip(input: InputStream, verifier: PackageVerifier, output: File) {
         try {
             val header = readHeader(input)
-            val key = deriveKey(password, header.salt, header.iterations)
+            if (!header.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) {
+                throw PackageDecryptException("不是有效的加密修复包（.clpkg）")
+            }
+            if (header[MAGIC.size].toInt() != VERSION) {
+                throw PackageDecryptException("不支持的修复包版本")
+            }
+            val keyId = ByteBuffer.wrap(header, KEY_ID_OFFSET, 4)
+                .order(ByteOrder.BIG_ENDIAN)
+                .int
+            if (keyId != verifier.keyId) {
+                throw PackageDecryptException("修复包使用了未知的签名密钥")
+            }
+            val signed = header.copyOfRange(0, SIGNED_BYTES)
+            val signature = header.copyOfRange(SIGNED_BYTES, HEADER_BYTES)
+            if (!verifier.verify(signed, signature)) {
+                throw PackageDecryptException("修复包未通过官方签名校验")
+            }
+
+            val dekNonce = header.copyOfRange(DEK_NONCE_OFFSET, DEK_NONCE_OFFSET + 12)
+            val wrappedDek = header.copyOfRange(WRAPPED_DEK_OFFSET, WRAPPED_DEK_OFFSET + 48)
+            val payloadNonce = header.copyOfRange(PAYLOAD_NONCE_OFFSET, PAYLOAD_NONCE_OFFSET + 12)
+            val payloadSha = header.copyOfRange(PAYLOAD_SHA_OFFSET, PAYLOAD_SHA_OFFSET + PAYLOAD_SHA_BYTES)
+            val dek = verifier.unwrapDek(
+                wrappedDek,
+                dekNonce,
+                header.copyOfRange(0, WRAP_AAD_BYTES)
+            )
+            if (dek.size != 32) {
+                dek.fill(0)
+                throw PackageDecryptException("修复包密钥长度无效")
+            }
             try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(
                     Cipher.DECRYPT_MODE,
-                    SecretKeySpec(key, "AES"),
-                    GCMParameterSpec(TAG_BITS, header.nonce)
+                    SecretKeySpec(dek, "AES"),
+                    GCMParameterSpec(TAG_BITS, payloadNonce)
                 )
-                cipher.updateAAD(header.raw)
+                cipher.updateAAD(header.copyOfRange(0, PAYLOAD_AAD_BYTES))
+                val digest = MessageDigest.getInstance("SHA-256")
                 output.outputStream().use { out ->
                     val buffer = ByteArray(BUFFER_BYTES)
                     var total = 0L
@@ -72,25 +199,25 @@ object PackageCrypto {
                         val count = input.read(buffer)
                         if (count < 0) break
                         total += count
-                        if (total > MAX_ENCRYPTED_BYTES) {
+                        if (total > MAX_CIPHERTEXT_BYTES) {
                             throw PackageDecryptException("修复包过大（超过 256 MB）")
                         }
+                        digest.update(buffer, 0, count)
                         val chunk = cipher.update(buffer, 0, count)
                         if (chunk != null && chunk.isNotEmpty()) out.write(chunk)
                     }
-                    val tail = try {
-                        cipher.doFinal()
-                    } catch (error: AEADBadTagException) {
-                        throw PackageDecryptException("密码错误或修复包已损坏")
-                    } catch (error: GeneralSecurityException) {
-                        throw PackageDecryptException(
-                            "修复包解密失败：${error.message ?: error.javaClass.simpleName}"
-                        )
-                    }
+                    val tail = cipher.doFinal()
                     if (tail != null && tail.isNotEmpty()) out.write(tail)
                 }
+                if (!digest.digest().contentEquals(payloadSha)) {
+                    throw PackageDecryptException("修复包内容校验失败")
+                }
+            } catch (error: PackageDecryptException) {
+                throw error
+            } catch (error: Exception) {
+                throw PackageDecryptException("修复包解密失败或内容已损坏")
             } finally {
-                key.fill(0)
+                dek.fill(0)
             }
         } catch (error: Exception) {
             output.delete()
@@ -98,66 +225,16 @@ object PackageCrypto {
         }
     }
 
-    /** PBKDF2-HMAC-SHA256，单块输出 32 字节；internal 便于单元测试固定向量。 */
-    internal fun deriveKey(password: CharArray, salt: ByteArray, iterations: Int): ByteArray {
-        require(iterations > 0) { "迭代次数必须大于 0" }
-        val passwordBytes = String(password).toByteArray(Charsets.UTF_8)
-        try {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(passwordBytes, "HmacSHA256"))
-            val u = ByteArray(32)
-            val t = ByteArray(32)
-            // U1 = HMAC(password, salt || INT(1))
-            mac.update(salt)
-            mac.update(byteArrayOf(0, 0, 0, 1))
-            mac.doFinal(u, 0)
-            System.arraycopy(u, 0, t, 0, u.size)
-            // T = U1 xor U2 xor ... xor Uc
-            for (i in 2..iterations) {
-                mac.update(u)
-                mac.doFinal(u, 0)
-                for (j in u.indices) t[j] = (t[j].toInt() xor u[j].toInt()).toByte()
-            }
-            return t
-        } finally {
-            passwordBytes.fill(0)
-        }
-    }
-
-    private data class Header(
-        val iterations: Int,
-        val salt: ByteArray,
-        val nonce: ByteArray,
-        val raw: ByteArray
-    )
-
-    private fun readHeader(input: InputStream): Header {
-        val raw = ByteArray(HEADER_BYTES)
+    private fun readHeader(input: InputStream): ByteArray {
+        val header = ByteArray(HEADER_BYTES)
         var offset = 0
-        while (offset < raw.size) {
-            val count = input.read(raw, offset, raw.size - offset)
-            if (count < 0) throw PackageDecryptException("不是有效的加密修复包（.clpkg）")
+        while (offset < header.size) {
+            val count = input.read(header, offset, header.size - offset)
+            if (count < 0) {
+                throw PackageDecryptException("不是有效的加密修复包（.clpkg）")
+            }
             offset += count
         }
-        if (!raw.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) {
-            throw PackageDecryptException("不是有效的加密修复包（.clpkg）")
-        }
-        if (raw[MAGIC.size].toInt() != VERSION) {
-            throw PackageDecryptException("不支持的修复包版本（${raw[MAGIC.size]}）")
-        }
-        val iterations = ByteBuffer.wrap(raw, MAGIC.size + 1, 4)
-            .order(ByteOrder.BIG_ENDIAN)
-            .int
-        if (iterations !in MIN_ITERATIONS..MAX_ITERATIONS) {
-            throw PackageDecryptException("修复包头部参数无效")
-        }
-        val saltOffset = MAGIC.size + 1 + 4
-        val nonceOffset = saltOffset + SALT_BYTES
-        return Header(
-            iterations = iterations,
-            salt = raw.copyOfRange(saltOffset, saltOffset + SALT_BYTES),
-            nonce = raw.copyOfRange(nonceOffset, nonceOffset + NONCE_BYTES),
-            raw = raw
-        )
+        return header
     }
 }

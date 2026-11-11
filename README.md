@@ -8,7 +8,7 @@
 - **设备状态**：查看常规 Linux 信息，包括主机名、发行版/系统信息、内核、架构、运行时间、CPU、内存、存储和网络信息。实际展示项以设备可提供的信息为准。
 - **文件管理**：浏览目录树，并尽可能支持查看文本、上传、下载、删除和重命名。只读文件系统及目录权限可能限制写操作。
 - **终端模式**：从设备页面切换到交互式 Shell，查看命令输出并继续输入命令。
-- **修复包**：导入加密 `.clpkg` 修复包（内含 ZIP 清单，导入时需要密码），检查清单与文件后，按清单顺序逐条传输文件或执行脚本；界面只展示步骤标题与状态圆点（待执行 / 执行中 / 成功 / 失败），标题过长时跑马灯滚动，失败时在标题下方显示错误原因。执行开始后不提供主动停止，失败后可选择“从失败处继续”或“从头开始”。
+- **修复包**：导入官方签名的 `.clpkg` 修复包（内含 ZIP 清单，导入时无需密码）；App 先验 RSA 签名，再解密并检查清单与文件，按清单顺序逐条传输文件或执行脚本；未签名/被篡改的包会被拒绝。界面只展示步骤标题与状态圆点（待执行 / 执行中 / 成功 / 失败），标题过长时跑马灯滚动，失败时在标题下方显示错误原因。执行开始后不提供主动停止，失败后可选择“从失败处继续”或“从头开始”。
 - **机型规则**：连接设备后用内置的只读文件探测识别机型，命中时在设备 IP 旁显示机型名；未命中显示“未知机型”，完整功能模式下可手动选择机型。
 - **补发授权码**：命中带授权配置的机型后进入独立授权页，读取当前授权与网卡 MAC，向 `MacToAuthCode` 平台申请授权码，写入设备授权文件、读回校验、`sync` 并重启，等待设备重新上线；操作结果写入本地记录，可导出完整 JSON。
 - **快捷操作**：机型规则可配置分组动作队列，仅完整功能模式可见；支持危险操作二次确认、逐条执行、输出查看与停止。
@@ -35,24 +35,26 @@
 
 补发授权码会向授权服务申请并覆盖设备授权文件，随后重启设备；设备重启后可能更换 IP，App 只能在原地址等待重新上线。授权记录中的完整授权码属于敏感信息，导出文件需按敏感文件保管。
 
-配置包格式、Telnet 协议边界、文件传输与模块设计见 [技术方案](docs/TECHNICAL_DESIGN.md)，加密容器与打包脚本见 [加密修复包格式](docs/PACKAGE_FORMAT.md)。1.8.0 机型规则、授权码与快捷操作的真机测试结果见 [测试报告](docs/TEST_REPORT_1.8.0.md)；1.10.1 云端变更、上传续传与故障注入测试见 [测试报告](docs/TEST_REPORT_1.10.1.md)。
+配置包格式、Telnet 协议边界、文件传输与模块设计见 [技术方案](docs/TECHNICAL_DESIGN.md)，官方签名容器与 Python 打包工具见 [签名修复包格式](docs/PACKAGE_FORMAT.md)。1.8.0 机型规则、授权码与快捷操作的真机测试结果见 [测试报告](docs/TEST_REPORT_1.8.0.md)；1.10.1 云端变更、上传续传与故障注入测试见 [测试报告](docs/TEST_REPORT_1.10.1.md)。
 
 ## 修复包快速格式
 
-修复包以加密容器 `.clpkg` 分发；App 只接受 `.clpkg`，不再直接导入裸 ZIP。容器内部是 ZIP，根目录放 `manifest.json`，步骤按数组顺序执行。资源路径相对于 ZIP 根目录。
+修复包以官方签名容器 `.clpkg` 分发；App 只接受 v2，未签名/被篡改的包不会执行。容器内部仍是 ZIP，根目录放 `manifest.json`，步骤按数组顺序执行。打包环境需要 Python 3.8+ 和 `cryptography`，不依赖 Java/Android SDK：
 
-```powershell
-# 目录 -> 加密包（交互输入密码）
-pwsh tools/pack-repair-package.ps1 -Source .\my-package -Output .\my-package.clpkg
+```bash
+python -m pip install -r tools/requirements.txt
 
-# 旧 ZIP -> 加密包（迁移旧包）
-pwsh tools/pack-repair-package.ps1 -Source .\old-package.zip -Output .\old-package.clpkg
+# 目录 -> 官方签名 .clpkg（默认读取 tools/keys/package-signing-private.pem）
+python tools/pack_repair_package.py --source ./my-package --output ./my-package.clpkg
 
-# 解密查看
-pwsh tools/unpack-repair-package.ps1 -InputPath .\my-package.clpkg -OutputDirectory .\my-package
+# 旧 ZIP -> 官方签名 .clpkg
+python tools/pack_repair_package.py --source ./old-package.zip --output ./old-package.clpkg
+
+# 验签并解包查看
+python tools/unpack_repair_package.py --input ./my-package.clpkg --output-dir ./my-package
 ```
 
-容器使用 AES-256-GCM + PBKDF2-HMAC-SHA256，密码不写入 APK、不落盘；格式与安全说明见 [PACKAGE_FORMAT.md](docs/PACKAGE_FORMAT.md)。示例清单：
+签名私钥必须离线保管；公钥在 `app/src/main/assets/package-signing-public.pem`。格式与安全边界见 [PACKAGE_FORMAT.md](docs/PACKAGE_FORMAT.md)。示例清单：
 
 ```json
 {

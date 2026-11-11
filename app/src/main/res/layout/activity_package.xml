@@ -28,7 +28,7 @@
         style="@style/Text.CasdonLink.Label"
         android:layout_width="match_parent"
         android:layout_marginTop="@dimen/space_lg"
-        android:text="请选择 .clpkg 加密修复包；导入时需要输入打包时设置的密码。" />
+        android:text="请选择官方签名的 .clpkg 加密修复包；导入时无需输入密码。" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/stepList"

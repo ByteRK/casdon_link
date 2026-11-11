@@ -4,17 +4,14 @@ import android.animation.Animator
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
-import android.content.DialogInterface
 import android.net.Uri
 import android.os.Bundle
-import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +32,7 @@ import com.example.casdonlink.files.formatByteSize
 import com.example.casdonlink.packages.PackageCrypto
 import com.example.casdonlink.packages.PackageDecryptException
 import com.example.casdonlink.packages.PackageImporter
+import com.example.casdonlink.packages.PackageVerifier
 import com.example.casdonlink.packages.RepairStep
 import com.example.casdonlink.ui.applyDarkSystemBars
 import com.example.casdonlink.ui.configureAsList
@@ -55,13 +53,17 @@ private const val PULSE_DURATION_MS = 750L
 class PackageActivity : AppCompatActivity() {
     private val picker = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) promptPassword(uri) }
+    ) { uri ->
+        if (uri != null) {
+            lastUri = uri
+            startImport(uri)
+        }
+    }
 
     private var imported: PackageImporter.ImportedPackage? = null
     private var running = false
     private var importing = false
     private var lastUri: Uri? = null
-    private var passwordDialog: AlertDialog? = null
     private val states = mutableListOf<StepState>()
     private lateinit var stepAdapter: StepAdapter
     private var runStartedAt = 0L
@@ -123,61 +125,27 @@ class PackageActivity : AppCompatActivity() {
             isSelected = true
         }
         findViewById<TextView>(R.id.packageDescription).text =
-            "请选择 .clpkg 加密修复包；导入时需要输入打包时设置的密码。"
+            "请选择官方签名的 .clpkg 加密修复包；导入时无需输入密码。"
         findViewById<TextView>(R.id.packageProgress).text = "未选择"
         states.clear()
         renderSteps()
     }
 
-    /** 选中文件后先要密码；密码只在本页内存中使用，不落盘。 */
-    private fun promptPassword(uri: Uri) {
-        if (running || importing) return
-        if (passwordDialog?.isShowing == true) return
-        lastUri = uri
-        val content = layoutInflater.inflate(R.layout.dialog_input, null)
-        val input = content.findViewById<EditText>(R.id.dialogInput).apply {
-            hint = "修复包密码"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("输入修复包密码")
-            .setMessage("该修复包已加密，请输入打包时设置的密码。")
-            .setView(content)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("解密导入", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val password = input.text.toString()
-                if (password.isEmpty()) {
-                    input.error = "请输入修复包密码"
-                    return@setOnClickListener
-                }
-                dialog.dismiss()
-                startImport(uri, password)
-            }
-        }
-        dialog.setOnDismissListener { passwordDialog = null }
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        passwordDialog = dialog
-        dialog.show()
-        input.requestFocus()
-    }
-
-    /** 解密到临时 ZIP，再交给 [PackageImporter] 做结构与清单校验。 */
-    private fun startImport(uri: Uri, password: String) {
+    /** 验签并解密到临时 ZIP，再交给 [PackageImporter] 做结构与清单校验。 */
+    private fun startImport(uri: Uri) {
         if (importing || running) return
         importing = true
         updateControls()
-        val busy = showBusy("正在导入修复包", "正在解密并校验…")
+        val busy = showBusy("正在导入修复包", "正在校验官方签名并解密…")
         lifecycleScope.launch {
             val temp = File(cacheDir, "package_import_${System.currentTimeMillis()}.zip")
             var result: PackageImporter.ImportedPackage? = null
             var failure: String? = null
             try {
                 result = withContext(Dispatchers.IO) {
+                    val verifier = PackageVerifier.fromAsset(this@PackageActivity)
                     contentResolver.openInputStream(uri)?.use { input ->
-                        PackageCrypto.decryptToZip(input, password.toCharArray(), temp)
+                        PackageCrypto.decryptToZip(input, verifier, temp)
                     } ?: throw PackageDecryptException("无法读取所选文件")
                     PackageImporter(this@PackageActivity).importZip(temp)
                 }
@@ -208,7 +176,7 @@ class PackageActivity : AppCompatActivity() {
                     append(loaded.manifest.description).append('\n')
                 }
                 append("ID · ").append(loaded.manifest.packageId)
-                append(" · 共 ").append(loaded.manifest.steps.size).append(" 个步骤 · 加密包已导入")
+                append(" · 共 ").append(loaded.manifest.steps.size).append(" 个步骤 · 官方签名已校验")
             }
             findViewById<TextView>(R.id.packageProgress).text = "${states.size} 步"
             renderSteps()
@@ -218,7 +186,7 @@ class PackageActivity : AppCompatActivity() {
     }
 
     private fun friendlyImportError(error: Exception): String = when (error) {
-        is PackageDecryptException -> error.message ?: "修复包解密失败"
+        is PackageDecryptException -> error.message ?: "修复包校验失败"
         is java.util.zip.ZipException -> "修复包 ZIP 无效：${error.message ?: "无法解析"}"
         else -> error.message ?: error.javaClass.simpleName
     }
@@ -226,8 +194,8 @@ class PackageActivity : AppCompatActivity() {
     private fun showImportFailure(message: String) {
         MaterialAlertDialogBuilder(this)
             .setTitle("导入失败")
-            .setMessage("$message\n\n请确认密码正确，或重新选择加密修复包（.clpkg）。")
-            .setPositiveButton("重试") { _, _ -> lastUri?.let { promptPassword(it) } }
+            .setMessage("$message\n\n请确认选择的是官方签名修复包（.clpkg），或重新选择文件。")
+            .setPositiveButton("重试") { _, _ -> lastUri?.let { startImport(it) } }
             .setNeutralButton("重新选择") { _, _ -> picker.launch(arrayOf("*/*")) }
             .setNegativeButton("关闭", null)
             .show()

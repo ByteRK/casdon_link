@@ -29,5 +29,12 @@ frontend/dist/
 *.clpkg
 !app/src/test/resources/*.clpkg
 
+# 官方签名私钥（只留在本机/离线环境）
+tools/keys/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+
 # Compiled class files
 patch

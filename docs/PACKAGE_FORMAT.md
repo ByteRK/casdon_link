@@ -1,75 +1,95 @@
-# 加密修复包格式（`.clpkg`）
+# 官方签名修复包格式（`.clpkg` v2）
 
-从 2.0.0 起，修复包不再以裸 ZIP 分发，而是加密容器 `.clpkg`。容器内部仍然是
-[技术方案第 5 节](TECHNICAL_DESIGN.md) 约定的 ZIP：根目录 `manifest.json` + 相对路径资源。
-App 只接受 `.clpkg`，导入时输入密码；解密后的 ZIP 继续走原有的路径/大小/清单校验。
+从 3.0.0 起，修复包只接受官方签名的 `.clpkg` v2 容器：
 
-## 1. 容器布局
+- **官方签名**：RSA-3072 + SHA-256，私钥只在官方打包环境，公钥内置在 App；
+- **导入无需密码**：App 先验签，再用包内随机 DEK 解密；
+- **v1 密码包不再支持**：旧包必须重新打包（v1 从未正式投入使用）；
+- 容器内部仍是 ZIP：根目录 `manifest.json` + 相对路径资源，规则见[技术方案第 5 节](TECHNICAL_DESIGN.md)。
+
+## 1. 安全模型
+
+“只允许官方包执行”的边界是 **RSA 签名**，不是加密：
+
+- App 内置官方公钥；导入时先验证签名，失败直接拒绝，不执行任何内容。
+- 打包私钥不在 App、不在仓库；即使有人逆向 APK 拿到公钥/加密密钥，也无法伪造或修改出能通过验签的包。
+- 载荷使用随机 DEK + 由公钥派生的 KEK 加密，只能防止“随手用解压软件打开”，**不能**阻止逆向 APK 的人解密官方包；若还要求内容保密，需要密码或服务器下发密钥。
+- 公钥可放仓库/APK；私钥必须离线或放在受控机器，并做好备份。私钥泄露等于官方签名能力泄露。
+
+## 2. 容器布局
 
 所有整数字段为大端。
 
 | 偏移 | 长度 | 字段 |
 | --- | --- | --- |
-| 0 | 5 | magic，ASCII `CLPKG` |
-| 5 | 1 | 容器版本，当前为 `1` |
-| 6 | 4 | PBKDF2 迭代次数（uint32） |
-| 10 | 16 | salt |
-| 26 | 12 | AES-GCM nonce |
-| 38 | N | AES-256-GCM 密文 |
-| 38+N | 16 | GCM tag |
+| 0 | 6 | magic，ASCII `CLPKG2` |
+| 6 | 1 | 容器版本，当前为 `2` |
+| 7 | 4 | `sigKeyId`：公钥 DER 的 SHA-256 前 4 字节 |
+| 11 | 12 | DEK 包裹 nonce |
+| 23 | 48 | `wrappedDek`：AES-256-GCM(KEK, DEK) 密文 32 + tag 16 |
+| 71 | 12 | 载荷 nonce |
+| 83 | 32 | 载荷密文 SHA-256 |
+| 115 | 384 | RSA-3072 签名，覆盖偏移 0–114 |
+| 499 | N | 载荷密文：AES-256-GCM(DEK, ZIP) |
 
-前 38 字节同时作为 GCM 的 AAD，篡改迭代次数/salt/nonce 会直接导致解密失败。
+- `KEK = SHA-256("CASDON-PKG-V2-KEK" || 公钥 DER)`，32 字节。
+- DEK 每包随机 32 字节；两个 nonce 各 12 字节随机。
+- DEK 包裹 AAD = 偏移 0–22；载荷 AAD = 偏移 0–82。
+- 签名覆盖前 115 字节（含 `payloadSha256` 与 `wrappedDek`）；载荷密文被签名中的 hash 绑定。
+- App 验签成功后才解包 DEK、解密载荷；解密后再校验 hash 与 GCM tag。
 
-## 2. 密钥派生与加密
+## 3. 密钥
 
-- KDF：PBKDF2-HMAC-SHA256，默认 210,000 次；解密按头部记录执行，接受 100,000–2,000,000。
-- 密钥：32 字节；密码按 UTF-8 原样参与 KDF。
-- 加密：AES-256-GCM，128-bit tag，12 字节随机 nonce，16 字节随机 salt。
-- 明文：完整 ZIP 字节流。
-- 密码错误或密文被篡改时，GCM tag 校验失败，App 显示“密码错误或修复包已损坏”。
+- 生成（RSA-3072）：
 
-## 3. 打包与解包
+  ```bash
+  python -m pip install -r tools/requirements.txt
+  python tools/generate_package_keys.py
+  ```
 
-脚本（Windows PowerShell 7；底层为 `PackageTool.java`，通过 JDK 11+ 单文件源码运行）：
+  默认输出：
 
-```powershell
-# 目录 -> .clpkg（密码交互输入）
-pwsh tools/pack-repair-package.ps1 -Source .\my-package -Output .\my-package.clpkg
+  - `tools/keys/package-signing-private.pem`：私钥，**不提交 Git**，移到离线环境保管；
+  - `app/src/main/assets/package-signing-public.pem`：公钥，随 App 构建。
 
-# 旧 ZIP -> .clpkg（迁移旧包）
-pwsh tools/pack-repair-package.ps1 -Source .\old-package.zip -Output .\old-package.clpkg
+- 换密钥时用 `--force` 重新生成，重新构建 App，并用新私钥重新打包；旧包会因 `sigKeyId` 不匹配被拒绝。需要同时支持新旧包时，再扩展为多公钥列表。
+- 私钥丢失无法再生成能通过现有 App 验签的包；请备份。
 
-# 解包到目录
-pwsh tools/unpack-repair-package.ps1 -InputPath .\my-package.clpkg -OutputDirectory .\my-package
+## 4. 打包与解包（Python，跨平台）
+
+依赖 Python 3.8+ 和 `cryptography`：
+
+```bash
+python -m pip install -r tools/requirements.txt
+
+# 目录 -> .clpkg（默认读取 tools/keys/package-signing-private.pem）
+python tools/pack_repair_package.py --source ./my-package --output ./my-package.clpkg
+
+# 旧 ZIP -> 官方签名 .clpkg
+python tools/pack_repair_package.py --source ./old-package.zip --output ./old-package.clpkg
+
+# 解包到目录（默认用 App 内的公钥验签）
+python tools/unpack_repair_package.py --input ./my-package.clpkg --output-dir ./my-package
 
 # 只还原 ZIP
-pwsh tools/unpack-repair-package.ps1 -InputPath .\my-package.clpkg -OutputZip .\my-package.zip
+python tools/unpack_repair_package.py --input ./my-package.clpkg --output-zip ./my-package.zip
 ```
 
-- 脚本默认交互输入密码并二次确认；`-Password` 仅用于自动化，会进入命令历史，不推荐。
-- 底层 Java 工具也支持环境变量 `CASDON_PKG_PASSWORD`，PowerShell 包装脚本用它在父进程与 Java 之间传递密码，不写入命令行。
-- `-Iterations` 可调整打包迭代次数（默认 210000）。
-- 输出已存在时需显式加 `-Force`。
-- 旧 ZIP 会保留目录条目；App 导入时跳过目录条目，不影响执行。
+- 输出已存在时加 `--force`。
+- `unpack` 会先验签，再解密；签名或内容校验失败直接退出。
+- 打包环境只需要 Python + `cryptography`，不依赖 Java/Android SDK。
 
-## 4. App 导入流程
+## 5. App 导入流程
 
-1. 在修复包页选择 `.clpkg`（系统文件选择器）。
-2. 弹窗输入修复包密码；密码只在当前页面内存中使用，不落盘。
-3. 流式解密到 `cacheDir` 临时 ZIP，成功后立即交给 `PackageImporter` 做清单校验与解压。
-4. 导入失败（密码错误、不是 `.clpkg`、ZIP/清单非法）不退出页面，可重新输入密码或重新选择文件。
-5. 执行开始后**不提供主动停止**；失败后弹窗让使用者选择“从失败处继续”或“从头开始”。
-6. 解密后的包目录保留最近 5 个（`filesDir/repair_packages/pkg_*`），更早的自动清理。
+1. 选择 `.clpkg`；
+2. 读取 assets 中的官方公钥，按 `sigKeyId` 校验；
+3. 先验签，失败提示“修复包未通过官方签名校验”；
+4. 验签通过后用 KEK 解包 DEK，解密载荷并校验 hash/GCM；
+5. 解密后的 ZIP 走原有路径/大小/清单校验，再展示步骤。
+6. 导入和执行仍遵循：开始后不能主动停止；失败后弹窗选择“从失败处继续 / 从头开始”；缓存保留最近 5 个包目录。
 
-## 5. 兼容性与迁移
+## 6. 兼容性与迁移
 
-- 1.x 的裸 ZIP 不再被 App 接受；请用打包脚本转换。转换会保留原 ZIP 内容。
-- 容器版本未知时 App 拒绝导入；后续如调整 KDF/字段，需升容器版本并保留旧版解密分支。
-- 密码丢失无法恢复包内容；请保留原始目录或 ZIP 源，重新打包。
-
-## 6. 安全说明
-
-- AES-GCM 同时提供机密性、完整性和“知道密码的人”的认证；当前**没有独立的发布者签名**。如果以后需要区分打包人/吊销某位打包者，应增加 Ed25519/RSA 签名并在 App 校验。
-- 密码是唯一信任边界：请使用足够强的密码，通过安全渠道分发，并定期轮换；不要把密码写进脚本或提交到仓库。
-- App 解压后的缓存目录是明文（应用私有目录）；有 root/ADB 权限的人仍可读取。打包文件本身可以安全地通过聊天工具/网盘传递。
-- 不要把 `.clpkg`、密码或测试密钥提交到 Git。
+- v1 密码包不再被 App 接受；旧包用 `pack_repair_package.py` 从 ZIP 重新打包成 v2。
+- v1 从未正式投入使用，因此移除属于受控的格式切换；版本仍按不兼容变更升到 3.0.0。
+- 容器版本未知时 App 拒绝导入；后续调整格式需要升版本并保留旧版解析分支。
