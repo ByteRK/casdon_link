@@ -4,7 +4,7 @@
 
 - **官方签名**：RSA-3072 + SHA-256，私钥只在官方打包环境，公钥内置在 App；
 - **导入无需密码**：App 先验签，再用包内随机 DEK 解密；
-- **v1 密码包不再支持**：旧包必须重新打包（v1 从未正式投入使用）；
+- **v1 密码包不再支持**：旧包保留原始 ZIP/目录源后重新打包（v1 从未正式投入使用）；
 - 容器内部仍是 ZIP：根目录 `manifest.json` + 相对路径资源，规则见[技术方案第 5 节](TECHNICAL_DESIGN.md)。
 
 ## 1. 安全模型
@@ -90,6 +90,6 @@ python tools/unpack_repair_package.py --input ./my-package.clpkg --output-zip ./
 
 ## 6. 兼容性与迁移
 
-- v1 密码包不再被 App 接受；旧包用 `pack_repair_package.py` 从 ZIP 重新打包成 v2。
+- v1 密码包不再被 App 接受；由于 v1 从未正式投入使用，直接保留原始 ZIP/目录源，用 `pack_repair_package.py` 重新打包成 v2 即可。
 - v1 从未正式投入使用，因此移除属于受控的格式切换；版本仍按不兼容变更升到 3.0.0。
 - 容器版本未知时 App 拒绝导入；后续调整格式需要升版本并保留旧版解析分支。
